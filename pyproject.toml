@@ -8,4 +8,10 @@ dependencies = [
     "llama-index>=0.13.0",
     "protobuf>=6.31.1",
     "slack-sdk>=3.36.0",
+    "boto3>=1.40.3",
+    "langchain>=0.3.27",
+    "pandas<2.3.0",
+    "pyarrow>=21.0.0",
+    "nltk>=3.9.1",
+    "pytest>=8.4.1",
 ]
