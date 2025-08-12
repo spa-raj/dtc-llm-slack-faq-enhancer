@@ -218,6 +218,7 @@ __marimo__/
 
 # slack dump
 slackdump/
+slack_dumps/
 
 #claude
 claude.md

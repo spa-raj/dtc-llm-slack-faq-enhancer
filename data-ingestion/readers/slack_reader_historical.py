@@ -243,7 +243,7 @@ class SlackHistoricalReader(BasePydanticReader):
 if __name__ == "__main__":
     # Example usage
     reader = SlackHistoricalReader(
-        slackdump_path="../slackdump/course-llm-zoomcamp",
+        slackdump_path="../slack_dumps/course-llm-zoomcamp",
         earliest_date=datetime(2024, 4, 1),
         latest_date=datetime(2024, 5, 1),
         bot_user_id='U05DM3PEJA2',
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     
     docs = reader.load_data()
     logger.info(f"Total documents loaded: {len(docs)}")
-    
+
     for i, thread in enumerate(docs[:3]):  # Show first 3 documents
         logger.info(f'Document {i+1}:')
         logger.info(f'Text (first 200 chars): {thread.text[:200]}...')
