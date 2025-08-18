@@ -1,0 +1,20 @@
+# Course configuration for dlt ingestion pipeline
+# Each course maps to a Slack channel with historical data stored in S3
+courses:
+  - id: course-data-engineering
+    raw_prefix: "s3://dtc-slack-data-prod/raw/slack/course-data-engineering"
+    
+  - id: course-llm-zoomcamp
+    raw_prefix: "s3://dtc-slack-data-prod/raw/slack/course-llm-zoomcamp"
+    
+  - id: course-mlops-zoomcamp
+    raw_prefix: "s3://dtc-slack-data-prod/raw/slack/course-mlops-zoomcamp"
+    
+  - id: course-ml-zoomcamp
+    raw_prefix: "s3://dtc-slack-data-prod/raw/slack/course-ml-zoomcamp"
+    
+  - id: course-stocks-analytics-zoomcamp
+    raw_prefix: "s3://dtc-slack-data-prod/raw/slack/course-stocks-analytics-zoomcamp"
+
+# For local testing, you can temporarily use local paths:
+# raw_prefix: "data-ingestion/slack_dumps/{course_id}"
