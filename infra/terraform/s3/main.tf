@@ -105,10 +105,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "slack" {
   }
 }
 
-# only build the writer policy if enabled
 data "aws_iam_policy_document" "writer" {
-  count = var.create_writer_policy ? 1 : 0
-
   statement {
     sid     = "ListBucket"
     effect  = "Allow"
@@ -119,13 +116,21 @@ data "aws_iam_policy_document" "writer" {
   statement {
     sid     = "RW"
     effect  = "Allow"
-    actions = ["s3:GetObject","s3:PutObject","s3:DeleteObject"]
+    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
     resources = ["${aws_s3_bucket.slack.arn}/*"]
   }
 }
 
 resource "aws_iam_policy" "writer" {
-  count  = var.create_writer_policy ? 1 : 0
-  name   = "${aws_s3_bucket.slack.id}-writer"
-  policy = data.aws_iam_policy_document.writer[0].json
+  name        = "${aws_s3_bucket.slack.id}-writer"
+  description = "RW policy for Slack data lake bucket"
+  policy      = data.aws_iam_policy_document.writer.json
 }
+
+# Attach to roles by NAME
+resource "aws_iam_role_policy_attachment" "writer_attach" {
+  for_each   = toset(var.attach_writer_to_roles)
+  role       = each.value
+  policy_arn = aws_iam_policy.writer.arn
+}
+

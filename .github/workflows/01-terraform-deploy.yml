@@ -21,6 +21,7 @@ env:
   STATE_PREFIX: ${{ vars.STATE_PREFIX }}
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  WRITER_POLICY_ARN: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:policy/${{ vars.BUCKET_DATA }}-writer
 
 jobs:
   terraform:
@@ -52,6 +53,27 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform fmt -recursive
 
+      - name: Preflight — AWS identity & S3 access
+        run: |
+          set -euo pipefail
+          echo "Caller identity (should be your OIDC role):"
+          aws sts get-caller-identity
+
+          echo "State bucket exists?"
+          aws s3api head-bucket --bucket "${{ env.BUCKET_STATE }}"
+
+          echo "List state prefix (OK if empty before first apply):"
+          aws s3 ls "s3://${{ env.BUCKET_STATE }}/${{ env.STATE_PREFIX }}/" || true
+
+          echo "Data bucket exists?"
+          aws s3api head-bucket --bucket "${{ env.BUCKET_DATA }}"
+
+          echo "Optional: current public access block (may be empty before TF configures it):"
+          aws s3api get-public-access-block --bucket "${{ env.BUCKET_DATA }}" || echo "no public access block yet"
+
+          echo "Optional: current encryption (may be empty before TF configures it):"
+          aws s3api get-bucket-encryption --bucket "${{ env.BUCKET_DATA }}" || echo "no encryption yet"
+
       - name: Terraform Init
         working-directory: ${{ env.WORKING_DIR }}
         run: |
@@ -73,7 +95,7 @@ jobs:
       - name: Verify AWS Identity
         run: |
           aws sts get-caller-identity
-          
+
       - name: Terraform Plan
         if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
         working-directory: ${{ env.WORKING_DIR }}
@@ -97,8 +119,27 @@ jobs:
           terraform apply -auto-approve \
                          -var="bucket_name=${{ env.BUCKET_DATA }}" \
                          -var="aws_region=${{ env.AWS_REGION }}"
-                         -var="create_writer_policy=false"
-                         
+                         -var="create_writer_policy=true"
+
+      - name: Post-apply — verify remote state & IAM
+        if: ${{ inputs.action == 'apply' || github.event.inputs.action == 'apply' }}
+        run: |
+          set -euo pipefail
+
+          echo "State object should exist now:"
+          aws s3api head-object \
+            --bucket "${{ env.BUCKET_STATE }}" \
+            --key "${{ env.STATE_PREFIX }}/terraform.tfstate"
+
+          echo "Writer policy should exist:"
+          aws iam get-policy --policy-arn "${{ env.WRITER_POLICY_ARN }}"
+
+          echo "Writer policy attachments (roles that have it):"
+          aws iam list-entities-for-policy \
+            --policy-arn "${{ env.WRITER_POLICY_ARN }}" \
+            --query "PolicyRoles[].RoleName" \
+            --output table
+
       - name: Terraform Destroy
         if: github.event.inputs.action == 'destroy'
         working-directory: ${{ env.WORKING_DIR }}

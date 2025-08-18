@@ -49,12 +49,8 @@ variable "tags" {
   }
 }
 
-variable "create_writer_policy" {
-  type    = bool
-  default = false
+variable "attach_writer_to_roles" {
+  type    = list(string)         # pass role NAMES, not ARNs
+  default = ["gha-upload-raw-dev","gha-dlt-dev","gha-train-setfit-dev","gha-classify-dev"]
 }
 
-variable "writer_principal_arn" {
-  type    = string
-  default = ""
-}
