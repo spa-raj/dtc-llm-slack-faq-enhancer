@@ -97,6 +97,7 @@ jobs:
           terraform apply -auto-approve \
                          -var="bucket_name=${{ env.BUCKET_DATA }}" \
                          -var="aws_region=${{ env.AWS_REGION }}"
+                         -var="create_writer_policy=false"
                          
       - name: Terraform Destroy
         if: github.event.inputs.action == 'destroy'
