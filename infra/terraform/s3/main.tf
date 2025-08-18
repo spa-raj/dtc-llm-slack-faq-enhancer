@@ -105,7 +105,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "slack" {
   }
 }
 
+# only build the writer policy if enabled
 data "aws_iam_policy_document" "writer" {
+  count = var.create_writer_policy ? 1 : 0
+
   statement {
     sid     = "ListBucket"
     effect  = "Allow"
@@ -116,14 +119,13 @@ data "aws_iam_policy_document" "writer" {
   statement {
     sid     = "RW"
     effect  = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    actions = ["s3:GetObject","s3:PutObject","s3:DeleteObject"]
     resources = ["${aws_s3_bucket.slack.arn}/*"]
   }
 }
 
 resource "aws_iam_policy" "writer" {
-  count       = var.create_writer_policy ? 1 : 0
-  name        = "${var.bucket_name}-writer"
-  description = "RW policy for Slack data lake bucket"
-  policy      = data.aws_iam_policy_document.writer.json
+  count  = var.create_writer_policy ? 1 : 0
+  name   = "${aws_s3_bucket.slack.id}-writer"
+  policy = data.aws_iam_policy_document.writer[0].json
 }

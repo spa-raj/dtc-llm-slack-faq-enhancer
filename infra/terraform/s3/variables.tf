@@ -51,7 +51,7 @@ variable "tags" {
 
 variable "create_writer_policy" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "writer_principal_arn" {
