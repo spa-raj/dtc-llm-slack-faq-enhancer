@@ -51,10 +51,12 @@ jobs:
       - name: Terraform Init
         working-directory: ${{ env.WORKING_DIR }}
         run: |
-          terraform init -backend-config="bucket=${{ env.BUCKET_STATE }}" \
-                        -backend-config="key=${{ env.STATE_PREFIX }}/terraform.tfstate" \
-                        -backend-config="region=${{ env.AWS_REGION }}"
-                        
+          terraform init \
+            -input=false \
+            -backend-config="bucket=${{ env.BUCKET_STATE }}" \
+            -backend-config="key=${{ env.STATE_PREFIX }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
       - name: Terraform Format Check
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform fmt -check
