@@ -14,7 +14,7 @@ on:
           - destroy
 
 env:
-  TF_VERSION: '1.9.0'
+  TF_VERSION: '1.12.2'
   WORKING_DIR: 'infra/terraform/s3'
   BUCKET_DATA: ${{ vars.BUCKET_DATA }}
   BUCKET_STATE: ${{ vars.BUCKET_STATE }}
