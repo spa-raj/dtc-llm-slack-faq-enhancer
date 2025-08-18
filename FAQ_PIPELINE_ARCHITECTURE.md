@@ -34,6 +34,16 @@ classifier/
   hybrid.py
   batch_run.py
   daily_run.py
+  labeling/
+    __init__.py
+    llm_labeler.py       # OpenRouter/LangChain integration
+    human_feedback.py    # Feedback incorporation
+    sample_selector.py   # Strategic sampling
+  training/
+    __init__.py
+    train_setfit.py      # Fine-tuning script
+    evaluate.py          # Model evaluation
+    model_registry.py    # Version management
 ```
 
 - **dlt** only ingests and normalizes Slack JSON → **bronze Parquet**.  
@@ -52,6 +62,9 @@ uv add dlt pyarrow s3fs fsspec orjson python-dateutil pyyaml
 
 # classifier (hybrid: SetFit primary + LLM fallback)
 uv add setfit datasets sentence-transformers pydantic
+
+# labeling & LLM integration
+uv add langchain langchain-openai openai httpx
 
 # optional: QA & local SQL
 uv add duckdb
@@ -583,11 +596,90 @@ uv run python classifier/daily_run.py   # daily
 
 ---
 
-## 6) Historical vs daily
+## 6) Model Training Workflow - Human-in-the-Loop with LLM Assistance
 
-- **Historical backfill**: bootstrap labels (LLM + human audit → SetFit fine-tune), then run `classifier/batch_run.py`; only uncertainty band uses LLM.  
-- **Daily**: dlt ingests JSON to bronze; `classifier/daily_run.py` scores the new day; LLM only for the uncertainty band.  
-- Keep a **30‑day confusion audit** and periodically **retrain** the small model with fresh labels.
+### 6.1 Initial Labeling Phase (Bootstrap Dataset)
+**Goal**: Create high-quality training data for fine-tuning the SetFit model
+
+1. **Sample Selection** (1000-2000 messages)
+   - Extract diverse thread heads from bronze Parquet
+   - Ensure representation across all courses and time periods
+   - Include edge cases (short questions, code snippets, non-English, etc.)
+
+2. **LLM-Assisted Labeling via OpenRouter**
+   ```python
+   # Uses OpenRouter API with LangChain for flexibility
+   - Model options: GPT-4, Claude, Gemini Pro
+   - Structured prompts with clear FAQ definition
+   - JSON schema output: {"is_faq": bool, "confidence": float, "reasoning": str}
+   ```
+
+3. **Human Review & Feedback Loop**
+   - Human expert reviews 200-300 LLM labels
+   - Documents disagreements with reasoning
+   - Creates feedback document with:
+     - Specific examples of misclassifications
+     - Clarified FAQ criteria
+     - Edge case handling rules
+   
+4. **LLM Re-labeling with Feedback**
+   - Incorporate human feedback into system prompt
+   - Re-label the corrected samples
+   - Apply learned rules to remaining unlabeled data
+   - Final human spot-check on random 50 samples
+
+### 6.2 Model Fine-tuning
+**Target Model**: `sentence-transformers/all-MiniLM-L6-v2` or similar
+
+1. **SetFit Training**
+   ```python
+   from setfit import SetFitModel, SetFitTrainer
+   
+   # Split: 80% train, 10% validation, 10% test
+   # Few-shot learning: works well with 1000-2000 labeled examples
+   # Contrastive learning for better separation
+   ```
+
+2. **Evaluation Metrics**
+   - Precision, Recall, F1-score
+   - Confusion matrix analysis
+   - Confidence calibration plots
+   - Performance by message length/type
+
+3. **Model Versioning**
+   - Save to S3: `s3://dtc-slack-data-prod/models/setfit/v{version}/`
+   - Track: training data hash, hyperparameters, metrics
+   - Maintain model registry with performance history
+
+### 6.3 Production Deployment Strategy
+
+1. **Hybrid Classification System**
+   - **Primary**: Fine-tuned SetFit model (fast, runs on all messages)
+   - **Uncertainty Band** (0.45 < score < 0.65): LLM fallback
+   - **LLM as Judge**: Randomly sample 1% of high-confidence predictions for quality monitoring
+
+2. **Continuous Improvement Loop**
+   ```
+   Daily Flow:
+   1. Classify new messages with SetFit
+   2. Route uncertain cases to LLM
+   3. LLM judge evaluates random sample
+   4. Accumulate feedback for 30 days
+   5. Retrain model monthly with new labeled data
+   ```
+
+3. **Quality Assurance**
+   - Track drift in confidence distributions
+   - Monitor LLM override rate
+   - Alert if disagreement rate exceeds threshold
+   - Human review triggered by anomalies
+
+### 6.4 Historical vs Daily Processing
+
+- **Historical backfill**: Use fine-tuned model from 6.2, run `classifier/batch_run.py`
+- **Daily incremental**: Process new messages with `classifier/daily_run.py`
+- **Retraining cadence**: Monthly with accumulated feedback
+- **A/B testing**: Shadow mode for new model versions before promotion
 
 ---
 
