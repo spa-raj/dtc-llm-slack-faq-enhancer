@@ -21,6 +21,7 @@ env:
   STATE_PREFIX: ${{ vars.STATE_PREFIX }}
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  TERRAFORM_ROLE_NAME: ${{ vars.TERRAFORM_ROLE_NAME }}
   WRITER_POLICY_ARN: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:policy/${{ vars.BUCKET_DATA }}-writer
 
 jobs:
@@ -41,7 +42,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/gha-terraform-apply-dev
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.TERRAFORM_ROLE_NAME }}
           aws-region: ${{ env.AWS_REGION }}
           
       - name: Setup Terraform
