@@ -7,6 +7,6 @@ variable "raw_glacier_days"      { type = number, default = 180 }
 variable "bronze_ia_days"        { type = number, default = 30 }
 variable "silver_ia_days"        { type = number, default = 30 }
 variable "enable_versioning"     { type = bool,   default = true }
-variable "tags"                  { type = map(string), default = {} }
+variable "tags"                  { type = map(string), default = { project = "dtc-llm-hackathon" } }
 variable "create_writer_policy"  { type = bool, default = true }
 variable "writer_principal_arn"  { type = string, default = "" }

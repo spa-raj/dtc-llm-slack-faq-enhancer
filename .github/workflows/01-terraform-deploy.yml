@@ -1,0 +1,110 @@
+name: 01 - Deploy S3 Infrastructure with Terraform
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  TF_VERSION: '1.9.0'
+  WORKING_DIR: 'infra/terraform/s3'
+  BUCKET_DATA: ${{ vars.BUCKET_DATA }}
+  BUCKET_STATE: ${{ vars.BUCKET_STATE }}
+  STATE_PREFIX: ${{ vars.STATE_PREFIX }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+
+jobs:
+  terraform:
+    name: Terraform ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/gha-terraform-apply-dev
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          
+      - name: Terraform Init
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          terraform init -backend-config="bucket=${{ env.BUCKET_STATE }}" \
+                        -backend-config="key=${{ env.STATE_PREFIX }}/terraform.tfstate" \
+                        -backend-config="region=${{ env.AWS_REGION }}"
+                        
+      - name: Terraform Format Check
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform fmt -check
+        continue-on-error: true
+        
+      - name: Terraform Validate
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform validate
+        
+      - name: Verify AWS Identity
+        run: |
+          aws sts get-caller-identity
+          
+      - name: Terraform Plan
+        if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
+        working-directory: ${{ env.WORKING_DIR }}
+        id: plan
+        run: |
+          terraform plan -var="bucket_name=${{ env.BUCKET_DATA }}" \
+                        -var="aws_region=${{ env.AWS_REGION }}" \
+                        -out=tfplan
+                        
+      - name: Upload Terraform Plan
+        if: github.event.inputs.action == 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: ${{ env.WORKING_DIR }}/tfplan
+          
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply'
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          terraform apply -auto-approve \
+                         -var="bucket_name=${{ env.BUCKET_DATA }}" \
+                         -var="aws_region=${{ env.AWS_REGION }}"
+                         
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          terraform destroy -auto-approve \
+                           -var="bucket_name=${{ env.BUCKET_DATA }}" \
+                           -var="aws_region=${{ env.AWS_REGION }}"
+                           
+      - name: Output Summary
+        if: always()
+        run: |
+          echo "## Terraform ${{ github.event.inputs.action }} Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bucket**: ${{ env.BUCKET_DATA }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
