@@ -47,7 +47,11 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
-          
+
+      - name: Terraform Format (write)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform fmt -recursive
+
       - name: Terraform Init
         working-directory: ${{ env.WORKING_DIR }}
         run: |
