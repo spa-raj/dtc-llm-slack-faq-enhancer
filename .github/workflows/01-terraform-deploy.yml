@@ -120,7 +120,6 @@ jobs:
           terraform apply -auto-approve \
                          -var="bucket_name=${{ env.BUCKET_DATA }}" \
                          -var="aws_region=${{ env.AWS_REGION }}"
-                         -var="create_writer_policy=true"
 
       - name: Post-apply — verify remote state & IAM
         if: ${{ inputs.action == 'apply' || github.event.inputs.action == 'apply' }}
