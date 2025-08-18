@@ -27,6 +27,16 @@ variable "raw_glacier_days" {
   default = 180
 }
 
+variable "bronze_ia_days" {
+  type    = number
+  default = 30
+}
+
+variable "silver_ia_days" {
+  type    = number
+  default = 30
+}
+
 variable "enable_versioning" {
   type    = bool
   default = true
@@ -44,9 +54,7 @@ variable "create_writer_policy" {
   default = true
 }
 
-variable "attach_writer_to_roles" {
-  type        = list(string)         # pass role NAMES, not ARNs
-  default     = ["gha-dlt-ingestion-dev"]  # Only ingestion role needs write access
-  description = "List of IAM role names that need write access to raw/slack/* prefix"
+variable "writer_principal_arn" {
+  type    = string
+  default = ""
 }
-

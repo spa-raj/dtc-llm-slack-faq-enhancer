@@ -7,6 +7,5 @@ output "bucket_arn" {
 }
 
 output "writer_policy_arn" {
-  value       = try(aws_iam_policy.writer[0].arn, null)
-  description = "ARN of the writer policy for raw data ingestion"
+  value = try(aws_iam_policy.writer[0].arn, null)
 }
