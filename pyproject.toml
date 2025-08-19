@@ -39,7 +39,3 @@ ingest = [
     "s3fs>=0.4.2",
 ]
 
-[tool.uv.scripts]
-ingest = "python data-ingestion/pipeline/slack_pipeline.py"
-label-batch = "python classifier/batch_run.py"
-label-daily = "python classifier/daily_run.py"
