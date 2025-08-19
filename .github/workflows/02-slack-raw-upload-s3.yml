@@ -2,9 +2,6 @@ name: 02 - Slack Raw Data Upload to S3
 
 on:
   workflow_dispatch:
-  push:  # TEMPORARY - remove after first run
-    branches:
-      - data-ingestion
   # schedule:
   #   - cron: "30 5 * * *"  # Daily at 11:00 AM IST (5:30 AM UTC)
 
@@ -16,7 +13,6 @@ env:
   SLACK_S3_WRITER_ROLE_NAME: ${{ vars.SLACK_S3_WRITER_ROLE_NAME }}
   
   # Pipeline Configuration
-  COURSES_YAML: ${{ vars.COURSES_YAML }}
   WINDOW_HOURS: ${{ vars.WINDOW_HOURS }}
   S3_SSE: ${{ vars.S3_SSE }}
   S3_SSE_KMS_KEY_ID: ${{ vars.S3_SSE_KMS_KEY_ID }}
