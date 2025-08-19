@@ -1,714 +1,195 @@
-# Datatalks.club — Ingestion with **dlt** + Terraform, and a Separate **FAQ Classifier Service** (uv-native)
-**Repo:** `spa-raj/dtc-llm-slack-faq-enhancer` (branch: `data-ingestion`)  
-Uses **uv** for dependency & environment management (no `pip`).  
-Single-channel-per-course. Classification lives *outside* dlt.
+# Datatalks.club — dlt **S3 → Process → Qdrant** (Daily) with Built‑in LLM Question Classifier & PII Redaction
 
-> Your repo already contains `pyproject.toml` and `uv.lock` at the root, and a `data-ingestion/` folder. This plan drops files into that layout and adds Terraform infra under `infra/terraform/s3`. 
+**Repo:** `spa-raj/dtc-llm-slack-faq-enhancer`  
+**Purpose:** Minimal, production‑lean MVP that reads raw Slack JSON from S3, processes **only the last 1 day** of data, classifies questions **via an LLM for all messages**, scrubs PII, embeds, and **upserts** into Qdrant. No Parquet lake is required for this MVP.
 
 ---
 
-## 0) What goes where (paths relative to repo root)
+## Why this revision
+We are simplifying the previous “dlt → bronze Parquet → separate classifier → gold Parquet” design into a *single dlt pipeline* that:
+1) streams raw Slack export JSON from S3, 2) filters to the most recent day, 3) **redacts PII before any model calls**, 4) calls an LLM to classify **question vs. not**, 5) embeds, and 6) writes to **Qdrant** for retrieval and future FAQ generation.
 
-```
-infra/
-  terraform/
-    s3/
-      versions.tf
-      provider.tf
-      variables.tf
-      main.tf
-      outputs.tf
-
-data-ingestion/
-  pipeline/
-    settings.py
-    slack_pipeline.py
-    courses.yml
-
-classifier/
-  __init__.py
-  types.py
-  prefilter.py
-  setfit_model.py
-  llm_fallback.py
-  hybrid.py
-  batch_run.py
-  daily_run.py
-  labeling/
-    __init__.py
-    llm_labeler.py       # OpenRouter/LangChain integration
-    human_feedback.py    # Feedback incorporation
-    sample_selector.py   # Strategic sampling
-  training/
-    __init__.py
-    train_setfit.py      # Fine-tuning script
-    evaluate.py          # Model evaluation
-    model_registry.py    # Version management
-```
-
-- **dlt** only ingests and normalizes Slack JSON → **bronze Parquet**.  
-- **Classifier Service** (separate package) reads bronze and writes **gold** (`faq_labels`, optional canonicalization tables).  
-- **Terraform** manages S3 as code (bucket, encryption, lifecycle, optional writer IAM).
+This reduces moving parts, removes the intermediate lake for MVP, and focuses effort on getting reliable Q→A search running fast.
 
 ---
 
-## 1) uv: environments & dependencies
+## High‑level flow
 
-### 1.1 Add runtime deps to `pyproject.toml`
-Use **uv** to record libs in `pyproject.toml` (keeps `uv.lock` in sync):
-```bash
-# ingestion / data lake
-uv add dlt pyarrow s3fs fsspec orjson python-dateutil pyyaml
-
-# classifier (hybrid: SetFit primary + LLM fallback)
-uv add setfit datasets sentence-transformers pydantic
-
-# labeling & LLM integration
-uv add langchain langchain-openai openai httpx
-
-# optional: QA & local SQL
-uv add duckdb
+```
+S3 (raw Slack JSON by course/day)
+            │
+            ▼
+        dlt pipeline
+   ┌────────────────────┬───────────────────────────────────────────────────────────────────────┐
+   │ Extract            │ Find only yesterday/today partitions (configurable). Read Slack JSON. │
+   ├────────────────────┼───────────────────────────────────────────────────────────────────────┤
+   │ Transform          │ Normalize + de‑dupe → identify thread head (ts == thread_ts).         │
+   │                    │ PII scrub (names, emails, phones, Slack handles, URLs, file links).   │
+   │                    │ Call LLM → label “is_question” for **all** candidate messages.        │
+   │                    │ For is_question=True: collect thread replies (same day), compact text │
+   │                    │ Create embeddings (question + concatenated replies).                   │
+   ├────────────────────┼───────────────────────────────────────────────────────────────────────┤
+   │ Load               │ Upsert to Qdrant (collection: faq_items).                              │
+   └────────────────────┴───────────────────────────────────────────────────────────────────────┘
 ```
 
-> Use dependency groups, update the 'pyproject.toml' to reflect this:
-
-> ```bash
-> uv add --group ingest dlt pyarrow s3fs fsspec orjson python-dateutil pyyaml
-> uv add --group classify setfit datasets sentence-transformers pydantic duckdb
-> ```
-
-Then install everything:
-```bash
-uv sync
-```
-
-Tip: run commands without activating a venv explicitly:
-```bash
-uv run python -V
-```
-
-### 1.2 `scripts` in `pyproject.toml`
-Add convenience scripts so you can run via `uv run <name>`:
-
-```toml
-[tool.uv.scripts]
-ingest = "python data-ingestion/pipeline/slack_pipeline.py"
-label-batch = "python classifier/batch_run.py"
-label-daily = "python classifier/daily_run.py"
-```
-
-Run:
-```bash
-uv run ingest
-uv run label-batch
-uv run label-daily
-```
+Notes:
+- Threads spanning multiple days are handled via **idempotent upserts** using the `thread_ts` as the stable key. Later replies are appended on subsequent daily runs.
+- You can switch the “last 1 day” window to “N hours” by changing a single parameter.
 
 ---
 
-## 2) Terraform S3 (managed as code)
+## Components
 
-Create **`infra/terraform/s3`** with these files:
+### Sources
+Raw Slack exports in S3 with Hive‑like partitioning:  
+`s3://<DATA_BUCKET>/raw/slack/<course_id>/year=YYYY/month=MM/day=DD/<YYYY-MM-DD>.json`
 
-**`versions.tf`**
-```hcl
-terraform {
-  required_version = ">= 1.5.0"
-  required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+### dlt pipeline (single job)
+- Iterates only the latest day’s prefix per course.
+- Normalizes Slack messages, identifies **thread heads** and **replies**.
+- Runs **PII scrub** before any model/embedding call.
+- Calls **LLM** to classify “is_question” for all thread heads and, if needed, single messages that look like questions.
+- Embeds question text and an **answer summary** (concatenated replies or first TA/instructor answer if detectable).
+- **Upserts** the record into Qdrant.
+
+### Qdrant (destination)
+One collection to start: `faq_items`.
+
+**Point id:** `course_id:thread_ts`  
+**Vector:** embedding of `question_text_redacted` (768‑dim default if using MiniLM; configurable).  
+**Payload (recommended fields):**
+- `course_id` (str)
+- `thread_ts` (str)
+- `ts` (str, ISO)
+- `question_text_redacted` (str)
+- `original_question_sha256` (str) – for de‑dupe
+- `is_question` (bool)
+- `llm_model` (str), `llm_confidence` (float)
+- `reply_count` (int)
+- `answers_redacted` (list[str]) – compacted reply texts for same day
+- `answer_compact_redacted` (str) – short summary/concatenation
+- `user_hash` (str|None) – salted HMAC of Slack user id
+- `created_at` / `updated_at` (ISO)
+- `embed_model` (str), `embed_dim` (int), `embed_version` (str)
+
+Later you may add a second collection for raw messages or for **answers** specifically; not needed for MVP.
+
+---
+
+## PII & Security (MVP‑ready)
+
+**Before any LLM or embedding call:**
+- Replace emails with `[EMAIL]`, phone numbers with `[PHONE]`, Slack handles `<@U…>` with `[USER]`, channel links `<#C…>` with `[CHANNEL]`, ordinary URLs with `[URL]`.
+- Remove file/private URLs from payloads.
+- Hash `user_id` with a **salted HMAC** and keep the salt in a secret store.
+- Strip code blocks from PII redaction (preserve code) via simple fence detection (```…```).
+
+**Secrets & IAM**
+- Read Slack token, LLM key, and Qdrant API key from environment/CI secrets.
+- Use least‑privilege OIDC roles for GitHub Actions and **S3 block public access**. (KMS optional.)
+
+**Transport & storage**
+- Use HTTPS for model and Qdrant calls.
+- Enable TLS and auth on Qdrant (or use Qdrant Cloud).
+
+**Logging**
+- Never log raw message text; log only hashes, counts, and per‑course metrics.
+
+---
+
+## Scheduling & windowing
+
+- Default window is **last 1 day** per course. Build the S3 prefix from `year/month/day` for UTC or course‑local time, as agreed.
+- Maintain a tiny **watermark** in dlt state so re‑runs are idempotent. If a file is reprocessed, the Qdrant upsert overwrites by `thread_ts` id.
+- CRON: run every morning for the previous day, or hourly with a rolling 24h window.
+
+---
+
+## Minimal data model (JSON)
+
+```json
+{
+  "id": "ml-zoomcamp:1723632000.000000",
+  "vector": [ ... ],
+  "payload": {
+    "course_id": "ml-zoomcamp",
+    "thread_ts": "1723632000.000000",
+    "ts": "2025-08-18T07:15:42Z",
+    "question_text_redacted": "How do I configure ... ?",
+    "original_question_sha256": "c5b2...",
+    "is_question": true,
+    "llm_model": "gpt-4o-mini",
+    "llm_confidence": 0.86,
+    "reply_count": 4,
+    "answers_redacted": ["Try setting ...", "Docs say ..."],
+    "answer_compact_redacted": "Set X in config; refer to link Y.",
+    "user_hash": "u:7f2c...",
+    "created_at": "2025-08-19T02:00:00Z",
+    "updated_at": "2025-08-19T02:00:05Z",
+    "embed_model": "all-MiniLM-L6-v2",
+    "embed_dim": 384,
+    "embed_version": "v1"
   }
 }
 ```
 
-**`provider.tf`**
-```hcl
-provider "aws" { region = var.aws_region }
+---
+
+## Example dlt sketch (pseudocode)
+
+```python
+@dlt.resource(name="slack_messages_daily")
+def read_daily(prefix:str, course_id:str, since_date:date):
+    # iterate only year=YYYY/month=MM/day=DD under prefix
+    for jpath in find_partition_paths(prefix, since_date):
+        for msg in load_json_lines(jpath):
+            yield normalize(msg, course_id, jpath)
+
+@dlt.transformer
+def redact_and_label(rows):
+    for r in rows:
+        r["text_redacted"] = scrub_pii(r["text"])
+        if is_thread_head(r):
+            decision, conf, model = llm_is_question(r["text_redacted"])
+            r["is_question"] = decision
+            r["llm_confidence"] = conf
+            r["llm_model"] = model
+        yield r
+
+@dlt.resource
+def to_qdrant(rows):
+    for r in rows:
+        if r.get("is_question"):
+            q_vec = embed(r["text_redacted"])
+            payload = build_payload(r)
+            qdrant.upsert(id=f"{r['course_id']}:{r['thread_ts_raw']}", vector=q_vec, payload=payload)
 ```
 
-**`variables.tf`**
-```hcl
-variable "aws_region"            { type = string, default = "ap-south-1" }
-variable "bucket_name"           { type = string }
-variable "use_kms"               { type = bool,   default = false }
-variable "kms_key_arn"           { type = string, default = "" }
-variable "raw_ia_days"           { type = number, default = 30 }
-variable "raw_glacier_days"      { type = number, default = 180 }
-variable "bronze_ia_days"        { type = number, default = 30 }
-variable "silver_ia_days"        { type = number, default = 30 }
-variable "enable_versioning"     { type = bool,   default = true }
-variable "tags"                  { type = map(string), default = {} }
-variable "create_writer_policy"  { type = bool, default = true }
-variable "writer_principal_arn"  { type = string, default = "" }
-```
-
-**`main.tf`**
-```hcl
-resource "aws_s3_bucket" "slack" {
-  bucket = var.bucket_name
-  tags   = var.tags
-}
-
-resource "aws_s3_bucket_public_access_block" "slack" {
-  bucket                  = aws_s3_bucket.slack.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket_ownership_controls" "slack" {
-  bucket = aws_s3_bucket.slack.id
-  rule { object_ownership = "BucketOwnerPreferred" }
-}
-
-resource "aws_s3_bucket_versioning" "slack" {
-  bucket = aws_s3_bucket.slack.id
-  versioning_configuration {
-    status = var.enable_versioning ? "Enabled" : "Suspended"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "slack" {
-  bucket = aws_s3_bucket.slack.id
-  rule { apply_server_side_encryption_by_default {
-    sse_algorithm     = var.use_kms ? "aws:kms" : "AES256"
-    kms_master_key_id = var.use_kms ? var.kms_key_arn : null
-  }}
-}
-
-data "aws_iam_policy_document" "deny_insecure_transport" {
-  statement {
-    sid     = "DenyInsecureTransport"
-    effect  = "Deny"
-    actions = ["s3:*"]
-    principals { type = "*", identifiers = ["*"] }
-    resources = [aws_s3_bucket.slack.arn, "${aws_s3_bucket.slack.arn}/*"]
-    condition { test = "Bool", variable = "aws:SecureTransport", values = ["false"] }
-  }
-}
-
-resource "aws_s3_bucket_policy" "slack" {
-  bucket = aws_s3_bucket.slack.id
-  policy = data.aws_iam_policy_document.deny_insecure_transport.json
-}
-
-resource "aws_s3_bucket_lifecycle_configuration" "slack" {
-  bucket = aws_s3_bucket.slack.id
-
-  rule {
-    id = "raw-transitions"
-    status = "Enabled"
-    filter { prefix = "raw/slack/" }
-    transition { days = var.raw_ia_days      storage_class = "STANDARD_IA" }
-    transition { days = var.raw_glacier_days storage_class = "GLACIER" }
-  }
-
-  rule {
-    id = "bronze-transitions"
-    status = "Enabled"
-    filter { prefix = "bronze/slack/" }
-    transition { days = var.bronze_ia_days storage_class = "STANDARD_IA" }
-  }
-
-  rule {
-    id = "silver-transitions"
-    status = "Enabled"
-    filter { prefix = "silver/slack/" }
-    transition { days = var.silver_ia_days storage_class = "STANDARD_IA" }
-  }
-}
-
-data "aws_iam_policy_document" "writer" {
-  statement { sid="ListBucket", effect="Allow", actions=["s3:ListBucket"], resources=[aws_s3_bucket.slack.arn] }
-  statement { sid="RW",        effect="Allow", actions=["s3:GetObject","s3:PutObject","s3:DeleteObject"], resources=["${aws_s3_bucket.slack.arn}/*"] }
-}
-
-resource "aws_iam_policy" "writer" {
-  count       = var.create_writer_policy ? 1 : 0
-  name        = "${var.bucket_name}-writer"
-  description = "RW policy for Slack data lake bucket"
-  policy      = data.aws_iam_policy_document.writer.json
-}
-```
-
-**`outputs.tf`**
-```hcl
-output "bucket_name"       { value = aws_s3_bucket.slack.bucket }
-output "bucket_arn"        { value = aws_s3_bucket.slack.arn }
-output "writer_policy_arn" { value = try(aws_iam_policy.writer[0].arn, null) }
-```
-
-Apply:
-```bash
-cd infra/terraform/s3
-terraform init
-terraform apply -auto-approve -var="bucket_name=dtc-slack-data-prod" -var="aws_region=ap-south-1"
-```
+Run via `uv run ingest-daily --date=YYYY-MM-DD` in CI.
 
 ---
 
-## 3) S3 path layout (single channel per course)
+## Operational notes
 
-```
-# Raw JSON
-s3://dtc-slack-data-prod/raw/slack/{course_id}/year={YYYY}/month={MM}/day={DD}/{YYYY-MM-DD}.json
-
-# Bronze Parquet (from dlt)
-s3://dtc-slack-data-prod/bronze/slack/messages/course_id={course_id}/year={YYYY}/month={MM}/day={DD}/part-*.parquet
-
-# Gold Parquet (from Classifier Service)
-s3://dtc-slack-data-prod/gold/faq_labels/course_id={course_id}/year={YYYY}/month={MM}/day={DD}/part-*.parquet
-```
+- If daily volume is large, add a **pre‑filter** (regex for `?` or WH‑words) to cut LLM calls while still honoring your “LLM for all messages” goal for MVP later.
+- If a question head appears but replies are missing the same day, the next run will upsert and add the new replies via the same `id`—no duplicates.
+- Keep per‑course concurrency low to respect rate limits; exponential backoff on LLM/Qdrant errors.
 
 ---
 
-## 4) dlt ingestion (data-ingestion/)
-
-**`data-ingestion/pipeline/settings.py`**
-```python
-from datetime import datetime, timezone
-from dateutil import parser as dateparser
-from hashlib import sha256
-
-def to_dt(ts_str: str | None):
-    if not ts_str: return None
-    try:
-        sec = float(ts_str)  # "1723556195.123456"
-        return datetime.fromtimestamp(sec, tz=timezone.utc)
-    except Exception:
-        try:
-            return dateparser.parse(ts_str).astimezone(timezone.utc)
-        except Exception:
-            return None
-
-def ymd_from_dt(dt: datetime | None):
-    if not dt: return (None, None, None)
-    return dt.year, dt.month, dt.day
-
-def digest(s: str) -> str:
-    return sha256(s.encode("utf-8", errors="ignore")).hexdigest()
-```
-
-**`data-ingestion/pipeline/slack_pipeline.py`**
-```python
-from __future__ import annotations
-from typing import Iterator, Dict, Any
-from pathlib import Path
-import dlt, fsspec, orjson
-from dlt.common.time import ensure_pendulum_datetime
-from .settings import to_dt, ymd_from_dt, digest
-
-def _is_s3(path: str) -> bool: return path.startswith("s3://")
-
-def _iter_json_files(prefix: str):
-    if _is_s3(prefix):
-        fs = fsspec.filesystem("s3")
-        for p in fs.find(prefix):
-            if p.endswith(".json"):
-                yield f"s3://{p}"
-    else:
-        for p in Path(prefix).rglob("*.json"):
-            yield str(p)
-
-def _path_ymd(path: str):
-    year = month = day = None
-    parts = path.split("/")
-    for seg in parts:
-        if seg.startswith("year="):  year  = year  or int(seg.split("=")[1])
-        if seg.startswith("month="): month = month or int(seg.split("=")[1])
-        if seg.startswith("day="):   day   = day   or int(seg.split("=")[1])
-    if not (year and month and day):
-        fname = parts[-1]
-        if len(fname) >= 15 and fname.endswith(".json"):
-            year  = year  or int(fname[0:4])
-            month = month or int(fname[5:7])
-            day   = day   or int(fname[8:10])
-    return year, month, day
-
-def _open_json(path: str):
-    if _is_s3(path):
-        fs = fsspec.filesystem("s3")
-        with fs.open(path, "rb") as f: return orjson.loads(f.read())
-    return orjson.loads(Path(path).read_bytes())
-
-@dlt.resource(name="messages", write_disposition="append")
-def messages_from_raw(raw_prefix: str, course_id: str) -> Iterator[Dict[str, Any]]:
-    """Yield normalized rows for bronze.messages; NO classification logic here."""
-    for jpath in _iter_json_files(raw_prefix):
-        y, m, d = _path_ymd(jpath)
-        try:
-            data = _open_json(jpath)
-            if not isinstance(data, list): continue
-        except Exception as e:
-            print("Failed:", jpath, e); continue
-
-        for msg in data:
-            if not isinstance(msg, dict): continue
-            ts_raw = msg.get("ts")
-            t_ts = to_dt(ts_raw)
-            thread_ts_raw = msg.get("thread_ts")
-            t_thread = to_dt(thread_ts_raw)
-
-            y0, m0, d0 = ymd_from_dt(t_ts)
-            year, month, day = (y or y0), (m or m0), (d or d0)
-
-            text = msg.get("text") or ""
-            reactions = [{"name": r.get("name"), "count": int(r.get("count") or 0)} for r in (msg.get("reactions") or [])]
-            files = [{
-                "id": f.get("id"), "name": f.get("name"), "mimetype": f.get("mimetype"),
-                "size": int(f.get("size") or 0), "url_private": f.get("url_private")
-            } for f in (msg.get("files") or [])]
-
-            yield {
-                "course_id": course_id,
-                "channel": None,  # single-channel-per-course; keep nullable for compatibility
-                "ts": t_ts, "ts_raw": ts_raw,
-                "thread_ts": t_thread, "thread_ts_raw": thread_ts_raw,
-                "is_thread_head": (ts_raw is not None and ts_raw == thread_ts_raw),
-                "user_id": msg.get("user"),
-                "client_msg_id": msg.get("client_msg_id"),
-                "bot_id": msg.get("bot_id"),
-                "subtype": msg.get("subtype"),
-                "text": text, "text_plain": text,
-                "reactions": reactions, "files": files,
-                "reply_count": msg.get("reply_count"),
-                "reply_users_count": msg.get("reply_users_count"),
-                "latest_reply": to_dt(msg.get("latest_reply")),
-                "edited_ts": to_dt(msg.get("edited", {}).get("ts")) if isinstance(msg.get("edited"), dict) else None,
-                "deleted": False,
-                "ingestion_time": ensure_pendulum_datetime(None),
-                "source_file_path": jpath,
-                "sha256": digest(text),
-                "year": year, "month": month, "day": day,
-            }
-
-def run_course(raw_prefix: str, course_id: str):
-    pipe = dlt.pipeline(pipeline_name="slack_ingest_v2", destination="filesystem", dataset_name="slack")
-    rows = messages_from_raw(raw_prefix=raw_prefix, course_id=course_id)
-    info = pipe.run({"messages": rows}, loader_file_format="parquet", write_disposition="append")
-    print(info)
-
-def run_all():
-    import yaml
-    from pathlib import Path
-    cfg = yaml.safe_load((Path(__file__).parent / "courses.yml").read_text())
-    for c in cfg["courses"]:
-        run_course(raw_prefix=c["raw_prefix"], course_id=c["id"])
-
-if __name__ == "__main__":
-    run_all()
-```
-
-**`data-ingestion/pipeline/courses.yml`**
-```yaml
-courses:
-  - id: ml-zoomcamp
-    raw_prefix: "s3://dtc-slack-data-prod/raw/slack/ml-zoomcamp"
-  - id: de-zoomcamp
-    raw_prefix: "s3://dtc-slack-data-prod/raw/slack/de-zoomcamp"
-# Append new courses here
-```
-
-Run ingestion:
-```bash
-# write directly to S3 (set in .dlt/secrets.toml as bucket_url="s3://dtc-slack-data-prod/bronze/slack")
-uv run python data-ingestion/pipeline/slack_pipeline.py
-```
-
-> `.dlt/config.toml` / `.dlt/secrets.toml` stay at repo root as before; only the pipeline code moved under `data-ingestion/`.
+## Extensibility (post‑MVP)
+- Add a **canonicalization** step to group similar questions with semantic clustering and store a canonical FAQ entry.
+- Replace daily window with an **event‑driven** Slack API poller once the MVP is validated.
+- Swap embedding model as needed; store `embed_version` in payload for safe re‑indexing.
 
 ---
 
-## 5) Classifier Service (separate from dlt)
+## Configuration knobs
 
-Implements your **hybrid** plan: **SetFit** primary, **LLM** fallback only for the uncertainty band. Produces **gold** Parquet.
-
-**`classifier/types.py`**
-```python
-from pydantic import BaseModel
-from typing import Optional
-
-class LabelRecord(BaseModel):
-    course_id: str
-    message_id: str
-    ts: Optional[str]
-    thread_ts: Optional[str]
-    is_thread_head: Optional[bool]
-    text: Optional[str]
-    is_faq: bool
-    score: float
-    decision_source: str  # "model" | "llm"
-    threshold_low: float
-    threshold_high: float
-    classifier_name: str
-    classifier_version: str
-    llm_model: Optional[str] = None
-    llm_confidence: Optional[float] = None
-    canonical_id: Optional[str] = None
-    canonical_text: Optional[str] = None
-    embedding_model: Optional[str] = None
-    embedding_version: Optional[str] = None
-    year: int
-    month: int
-    day: int
-```
-
-**`classifier/prefilter.py`**
-```python
-def is_question_like(text: str) -> bool:
-    if not text: return False
-    t = text.strip()
-    if len(t) < 6 or len(t) > 240: return False
-    tl = t.lower()
-    return ("?" in t) or tl.startswith(("how ","what ","when ","where ","why ","which ","does ","do ","can ","is ","are ","anyone know"))
-```
-
-**`classifier/setfit_model.py`**
-```python
-from setfit import SetFitModel
-import numpy as np
-
-class SetFitWrapper:
-    def __init__(self, path_or_hub="sentence-transformers/all-MiniLM-L6-v2"):
-        self.model = SetFitModel.from_pretrained(path_or_hub)
-        self.name = "setfit-miniLM"
-        self.version = "v1"
-    def predict_proba(self, texts):
-        return np.asarray(self.model.predict_proba(texts)[:,1], dtype=float)
-```
-
-**`classifier/llm_fallback.py`**
-```python
-def ask_llm_is_faq(text: str) -> tuple[bool, float, str]:
-    # Integrate GPT/Gemini here with a strict JSON schema & FAQ definition.
-    # Return (is_faq, confidence, model_name)
-    return (False, 0.0, "llm-stub")
-```
-
-**`classifier/hybrid.py`**
-```python
-import pyarrow as pa, pyarrow.dataset as ds, pyarrow.parquet as pq
-import fsspec
-from datetime import timezone, datetime
-from .prefilter import is_question_like
-from .setfit_model import SetFitWrapper
-from .llm_fallback import ask_llm_is_faq
-from .types import LabelRecord
-
-class HybridClassifier:
-    def __init__(self, bucket="dtc-slack-data-prod", bronze_prefix="bronze/slack/messages",
-                 gold_prefix="gold/faq_labels", low=0.45, high=0.65):
-        self.bucket = bucket
-        self.bronze = f"s3://{bucket}/{bronze_prefix}"
-        self.gold   = f"s3://{bucket}/{gold_prefix}"
-        self.low, self.high = low, high
-        self.clf = SetFitWrapper()
-
-    def _read_messages(self, course_id:str, y:int, m:int, d:int):
-        path = f"{self.bronze}/course_id={course_id}/year={y}/month={m:02d}/day={d:02d}"
-        dataset = ds.dataset(path, format="parquet", filesystem=fsspec.filesystem("s3"))
-        return dataset.to_table(columns=[
-            "course_id","ts","ts_raw","thread_ts","thread_ts_raw","is_thread_head","text","year","month","day"
-        ])
-
-    def _write_labels(self, table: pa.Table, course_id:str, y:int, m:int, d:int):
-        out = f"{self.gold}/course_id={course_id}/year={y}/month={m:02d}/day={d:02d}"
-        fs = fsspec.filesystem("s3")
-        pq.write_to_dataset(table, root_path=out, filesystem=fs, compression="zstd")
-
-    def process_partition(self, course_id:str, y:int, m:int, d:int):
-        tab = self._read_messages(course_id, y, m, d)
-        df = tab.to_pandas()
-
-        cand = df[(df["is_thread_head"]==True) & (df["text"].astype(str).map(is_question_like))].copy()
-        if cand.empty:
-            return
-
-        probs = self.clf.predict_proba(cand["text"].tolist())
-        recs = []
-        for (_, row), p in zip(cand.iterrows(), probs):
-            decision_source = "model"
-            is_faq = p >= 0.5
-            llm_model = None; llm_conf = None
-
-            if self.low <= p <= self.high:
-                v, c, name = ask_llm_is_faq(row["text"] or "")
-                decision_source, is_faq, llm_conf, llm_model = "llm", bool(v), float(c), name
-
-            recs.append(LabelRecord(
-                course_id=row["course_id"], message_id=f"{row['course_id']}:{row['ts_raw']}",
-                ts=row["ts"].isoformat() if row["ts"] is not None else None,
-                thread_ts=row["thread_ts"].isoformat() if row["thread_ts"] is not None else None,
-                is_thread_head=bool(row["is_thread_head"]), text=row["text"],
-                is_faq=bool(is_faq), score=float(p), decision_source=decision_source,
-                threshold_low=float(self.low), threshold_high=float(self.high),
-                classifier_name=self.clf.name, classifier_version=self.clf.version,
-                llm_model=llm_model, llm_confidence=llm_conf,
-                year=int(row["year"]), month=int(row["month"]), day=int(row["day"]),
-            ).model_dump())
-
-        if recs:
-            pa_tbl = pa.Table.from_pylist(recs)
-            self._write_labels(pa_tbl, course_id, int(df["year"].iloc[0]), int(df["month"].iloc[0]), int(df["day"].iloc[0]))
-```
-
-**`classifier/batch_run.py`**
-```python
-import fsspec
-from .hybrid import HybridClassifier
-
-def run_all_courses(bucket="dtc-slack-data-prod", courses=("ml-zoomcamp","de-zoomcamp")):
-    clf = HybridClassifier(bucket=bucket)
-    fs = fsspec.filesystem("s3")
-    for course in courses:
-        root = f"s3://{bucket}/bronze/slack/messages/course_id={course}"
-        for y_path in fs.ls(root):
-            y = int(y_path.split("year=")[1].split("/")[0])
-            for m_path in fs.ls(y_path):
-                m = int(m_path.split("month=")[1].split("/")[0])
-                for d_path in fs.ls(m_path):
-                    d = int(d_path.split("day=")[1].split("/")[0])
-                    clf.process_partition(course, y, m, d)
-
-if __name__ == "__main__":
-    run_all_courses()
-```
-
-**`classifier/daily_run.py`**
-```python
-from datetime import date
-from .hybrid import HybridClassifier
-
-def run_today(course_id:str, bucket="dtc-slack-data-prod"):
-    clf = HybridClassifier(bucket=bucket)
-    today = date.today()
-    clf.process_partition(course_id, today.year, today.month, today.day)
-
-if __name__ == "__main__":
-    run_today("ml-zoomcamp")
-```
-
-Run with uv:
-```bash
-uv run python classifier/batch_run.py   # historical
-uv run python classifier/daily_run.py   # daily
-```
+- `DATA_BUCKET`, `COURSES_YAML`, `WINDOW_DAYS` (default: 1), `QDRANT_URL`, `QDRANT_API_KEY`, `EMBED_MODEL`, `LLM_MODEL`, `PII_SALT`.
+- Fallback to local Qdrant (Docker) for dev; use Qdrant Cloud in prod.
 
 ---
 
-## 6) Model Training Workflow - Human-in-the-Loop with LLM Assistance
-
-### 6.1 Initial Labeling Phase (Bootstrap Dataset)
-**Goal**: Create high-quality training data for fine-tuning the SetFit model
-
-1. **Sample Selection** (1000-2000 messages)
-   - Extract diverse thread heads from bronze Parquet
-   - Ensure representation across all courses and time periods
-   - Include edge cases (short questions, code snippets, non-English, etc.)
-
-2. **LLM-Assisted Labeling via OpenRouter**
-   ```python
-   # Uses OpenRouter API with LangChain for flexibility
-   - Model options: GPT-4, Claude, Gemini Pro
-   - Structured prompts with clear FAQ definition
-   - JSON schema output: {"is_faq": bool, "confidence": float, "reasoning": str}
-   ```
-
-3. **Human Review & Feedback Loop**
-   - Human expert reviews 200-300 LLM labels
-   - Documents disagreements with reasoning
-   - Creates feedback document with:
-     - Specific examples of misclassifications
-     - Clarified FAQ criteria
-     - Edge case handling rules
-   
-4. **LLM Re-labeling with Feedback**
-   - Incorporate human feedback into system prompt
-   - Re-label the corrected samples
-   - Apply learned rules to remaining unlabeled data
-   - Final human spot-check on random 50 samples
-
-### 6.2 Model Fine-tuning
-**Target Model**: `sentence-transformers/all-MiniLM-L6-v2` or similar
-
-1. **SetFit Training**
-   ```python
-   from setfit import SetFitModel, SetFitTrainer
-   
-   # Split: 80% train, 10% validation, 10% test
-   # Few-shot learning: works well with 1000-2000 labeled examples
-   # Contrastive learning for better separation
-   ```
-
-2. **Evaluation Metrics**
-   - Precision, Recall, F1-score
-   - Confusion matrix analysis
-   - Confidence calibration plots
-   - Performance by message length/type
-
-3. **Model Versioning**
-   - Save to S3: `s3://dtc-slack-data-prod/models/setfit/v{version}/`
-   - Track: training data hash, hyperparameters, metrics
-   - Maintain model registry with performance history
-
-### 6.3 Production Deployment Strategy
-
-1. **Hybrid Classification System**
-   - **Primary**: Fine-tuned SetFit model (fast, runs on all messages)
-   - **Uncertainty Band** (0.45 < score < 0.65): LLM fallback
-   - **LLM as Judge**: Randomly sample 1% of high-confidence predictions for quality monitoring
-
-2. **Continuous Improvement Loop**
-   ```
-   Daily Flow:
-   1. Classify new messages with SetFit
-   2. Route uncertain cases to LLM
-   3. LLM judge evaluates random sample
-   4. Accumulate feedback for 30 days
-   5. Retrain model monthly with new labeled data
-   ```
-
-3. **Quality Assurance**
-   - Track drift in confidence distributions
-   - Monitor LLM override rate
-   - Alert if disagreement rate exceeds threshold
-   - Human review triggered by anomalies
-
-### 6.4 Historical vs Daily Processing
-
-- **Historical backfill**: Use fine-tuned model from 6.2, run `classifier/batch_run.py`
-- **Daily incremental**: Process new messages with `classifier/daily_run.py`
-- **Retraining cadence**: Monthly with accumulated feedback
-- **A/B testing**: Shadow mode for new model versions before promotion
-
----
-
-## 7) Notes
-
-- Classification is **out of dlt** → ingestion is stable, re‑label anytime.  
-- Parquet compression: **ZSTD**, partitions: `course_id/year/month/day`.  
-- If you need upserts/time‑travel, consider Iceberg/Delta/Hudi on S3; DuckDB/Athena can still query.  
-- For uv-only workflows, prefer `uv add`, `uv sync`, and `uv run`; avoid mixing in `pip`.
-
----
-
-## 8) Quick commands (copy/paste)
-
-```bash
-# 1) Infra
-cd infra/terraform/s3 && terraform init
-terraform apply -auto-approve -var="bucket_name=dtc-slack-data-prod" -var="aws_region=ap-south-1"
-
-# 2) Deps (uv)
-uv add dlt pyarrow s3fs fsspec orjson python-dateutil pyyaml
-uv add setfit datasets sentence-transformers pydantic duckdb
-uv sync
-
-# 3) Ingest (dlt)
-uv run python data-ingestion/pipeline/slack_pipeline.py
-
-# 4) Label (hybrid)
-uv run python classifier/batch_run.py
-# or
-uv run python classifier/daily_run.py
-```
+*Last updated: 2025-08-19 04:06:58Z*
