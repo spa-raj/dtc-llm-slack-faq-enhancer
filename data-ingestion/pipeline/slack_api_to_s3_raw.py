@@ -65,6 +65,9 @@ def _substitute_env_vars(text: str) -> str:
     """
     def replacer(match):
         var_name = match.group(1)
+        # Skip comment lines and documentation examples
+        if var_name == "VAR_NAME":
+            return match.group(0)  # Return the original placeholder
         value = os.environ.get(var_name)
         if value is None:
             raise ValueError(f"Environment variable {var_name} is not set")
