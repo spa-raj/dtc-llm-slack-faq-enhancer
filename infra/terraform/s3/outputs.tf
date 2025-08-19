@@ -7,6 +7,6 @@ output "bucket_arn" {
 }
 
 output "writer_policy_arn" {
-  value       = aws_iam_policy.writer.arn
-  description = "Writer policy ARN when created by Terraform"
+  value       = try(aws_iam_policy.writer[0].arn, null)
+  description = "ARN of the writer policy for raw data ingestion"
 }

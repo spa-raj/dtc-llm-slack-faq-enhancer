@@ -79,58 +79,42 @@ resource "aws_s3_bucket_lifecycle_configuration" "slack" {
       storage_class = "GLACIER"
     }
   }
-
-  rule {
-    id     = "bronze-transitions"
-    status = "Enabled"
-    filter {
-      prefix = "bronze/slack/"
-    }
-    transition {
-      days          = var.bronze_ia_days
-      storage_class = "STANDARD_IA"
-    }
-  }
-
-  rule {
-    id     = "silver-transitions"
-    status = "Enabled"
-    filter {
-      prefix = "silver/slack/"
-    }
-    transition {
-      days          = var.silver_ia_days
-      storage_class = "STANDARD_IA"
-    }
-  }
 }
 
 data "aws_iam_policy_document" "writer" {
+  count = var.create_writer_policy ? 1 : 0
+  
   statement {
-    sid     = "ListBucket"
+    sid     = "ListRawPrefix"
     effect  = "Allow"
     actions = ["s3:ListBucket"]
     resources = [aws_s3_bucket.slack.arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["raw/slack/*"]
+    }
   }
 
   statement {
-    sid     = "RW"
+    sid     = "WriteRawOnly"
     effect  = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = ["${aws_s3_bucket.slack.arn}/*"]
+    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
+    resources = ["${aws_s3_bucket.slack.arn}/raw/slack/*"]
   }
 }
 
 resource "aws_iam_policy" "writer" {
+  count       = var.create_writer_policy ? 1 : 0
   name        = "${aws_s3_bucket.slack.id}-writer"
-  description = "RW policy for Slack data lake bucket"
-  policy      = data.aws_iam_policy_document.writer.json
+  description = "Write policy for raw Slack data ingestion"
+  policy      = data.aws_iam_policy_document.writer[0].json
 }
 
-# Attach to roles by NAME
+# Attach to ingestion roles only
 resource "aws_iam_role_policy_attachment" "writer_attach" {
-  for_each   = toset(var.attach_writer_to_roles)
+  for_each   = var.create_writer_policy ? toset(var.attach_writer_to_roles) : toset([])
   role       = each.value
-  policy_arn = aws_iam_policy.writer.arn
+  policy_arn = aws_iam_policy.writer[0].arn
 }
 
