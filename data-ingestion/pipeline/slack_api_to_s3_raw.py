@@ -437,9 +437,9 @@ def main():
     # env-first configuration
     bucket = args.bucket or _env("BUCKET_DATA")
     courses_yaml = args.courses_yaml or _env("COURSES_YAML", "data-ingestion/pipeline/courses.yml")
-    window_hours = args.window_hours or int(_env("WINDOW_HOURS", "24"))
-    jitter_ms = int(_env("RATE_JITTER_MS", "0") or 0)
-    backoff_cap = float(_env("RATE_MAX_BACKOFF_S", "30"))
+    window_hours = args.window_hours or int(_env("WINDOW_HOURS", "24") or "24")
+    jitter_ms = int(_env("RATE_JITTER_MS", "0") or "0")
+    backoff_cap = float(_env("RATE_MAX_BACKOFF_S", "30") or "30")
 
     token = _env("SLACK_BOT_TOKEN")
     if not token:
