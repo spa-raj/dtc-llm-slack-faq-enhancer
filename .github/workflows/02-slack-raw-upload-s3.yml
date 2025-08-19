@@ -2,6 +2,11 @@ name: 02 - Slack Raw Data Upload to S3
 
 on:
   workflow_dispatch:
+
+  # run on push
+  push:
+      branches:
+        - data-ingestion
   # schedule:
   #   - cron: "30 5 * * *"  # Daily at 11:00 AM IST (5:30 AM UTC)
 
