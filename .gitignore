@@ -223,3 +223,6 @@ slack_dumps/
 #claude
 claude.md
 project_guide_github_oidc_dev.md
+
+#downloaded test files
+test-downloaded-s3-files/
