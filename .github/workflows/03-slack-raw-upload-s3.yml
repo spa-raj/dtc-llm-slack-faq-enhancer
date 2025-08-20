@@ -1,4 +1,7 @@
-name: 02 - Slack Raw Data Upload to S3
+name: 03 - Slack Raw Data Upload to S3
+description: |
+  This workflow uploads raw Slack data to S3 using the Slack API.
+  It runs on a schedule or can be triggered manually.
 
 on:
   workflow_dispatch:

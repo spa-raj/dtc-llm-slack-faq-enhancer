@@ -1,5 +1,12 @@
 name: 01 - Deploy S3 Infrastructure with Terraform
-
+description: |
+  This workflow deploys S3 infrastructure using Terraform.
+  It supports actions like `plan`, `apply`, and `destroy`.
+  The workflow is triggered manually via the GitHub UI.
+  It uses OIDC for AWS authentication and assumes a specific IAM role for Terraform operations.
+  The workflow includes preflight checks, Terraform initialization, validation, and post-apply verification.
+  It also uploads the Terraform plan as an artifact if the action is `plan`.
+  The workflow is designed to run in a development environment and outputs a summary of the actions taken at the end.
 on:
   workflow_dispatch:
     inputs:
