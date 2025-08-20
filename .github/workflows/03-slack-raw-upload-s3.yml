@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
   # run on push
-  push:
-      branches:
-        - data-ingestion
-  # schedule:
-  #   - cron: "30 5 * * *"  # Daily at 11:00 AM IST (5:30 AM UTC)
+#  push:
+#      branches:
+#        - data-ingestion
+  schedule:
+     - cron: "30 5 * * *"  # Daily at 11:00 AM IST (5:30 AM UTC)
 
 env:
   # AWS Configuration
