@@ -1,0 +1,33 @@
+Starting Slack data ingestion...
+Window:  hours
+Target bucket: dtc-slack-data-dev
+/home/runner/work/dtc-llm-slack-faq-enhancer/dtc-llm-slack-faq-enhancer/.venv/lib/python3.12/site-packages/fsspec/registry.py:298: UserWarning: Your installed version of s3fs is very old and known to cause
+severe performance issues, see also https://github.com/dask/dask/issues/10276
+To fix, you should specify a lower version bound on s3fs, or
+update the current installation.
+  warnings.warn(s3_msg)
+Traceback (most recent call last):
+Configuration:
+  Bucket: dtc-slack-data-dev
+  Window: 24 hours
+  Courses YAML: data-ingestion/pipeline/courses.yml
+  Rate jitter: 0ms
+  Max backoff: 30.0s
+Time window: 2025-08-18T14:50:45.638204+00:00 to 2025-08-19T14:50:45.638204+00:00
+  File "/home/runner/work/dtc-llm-slack-faq-enhancer/dtc-llm-slack-faq-enhancer/data-ingestion/pipeline/slack_api_to_s3_raw.py", line 540, in <module>
+    main()
+  File "/home/runner/work/dtc-llm-slack-faq-enhancer/dtc-llm-slack-faq-enhancer/data-ingestion/pipeline/slack_api_to_s3_raw.py", line 472, in main
+    courses = load_courses_config(courses_yaml)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/dtc-llm-slack-faq-enhancer/dtc-llm-slack-faq-enhancer/data-ingestion/pipeline/slack_api_to_s3_raw.py", line 397, in load_courses_config
+    yaml_content = _substitute_env_vars(yaml_content)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/dtc-llm-slack-faq-enhancer/dtc-llm-slack-faq-enhancer/data-ingestion/pipeline/slack_api_to_s3_raw.py", line 73, in _substitute_env_vars
+    return re.sub(r'\$\{([^}]+)\}', replacer, text)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/re/__init__.py", line 186, in sub
+    return _compile(pattern, flags).sub(repl, string, count)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/dtc-llm-slack-faq-enhancer/dtc-llm-slack-faq-enhancer/data-ingestion/pipeline/slack_api_to_s3_raw.py", line 70, in replacer
+    raise ValueError(f"Environment variable {var_name} is not set")
+ValueError: Environment variable VAR_NAME is not set
