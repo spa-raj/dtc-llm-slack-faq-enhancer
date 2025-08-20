@@ -1,0 +1,60 @@
+name: 02 - Bot Join Slack Channels
+description: |
+  This workflow adds the Slack bot to specified channels configured in environment variables.
+  It can be triggered manually or on push to specific branches.
+
+on:
+  workflow_dispatch:
+
+# uncomment when a new channel is added
+# run on push
+#  push:
+#    branches:
+#      - data-ingestion
+
+env:
+  # Slack Channel IDs
+  SLACK_CHANNEL_DATA_ENGINEERING: ${{ vars.SLACK_CHANNEL_DATA_ENGINEERING }}
+  SLACK_CHANNEL_LLM_ZOOMCAMP: ${{ vars.SLACK_CHANNEL_LLM_ZOOMCAMP }}
+  SLACK_CHANNEL_MLOPS_ZOOMCAMP: ${{ vars.SLACK_CHANNEL_MLOPS_ZOOMCAMP }}
+  SLACK_CHANNEL_ML_ZOOMCAMP: ${{ vars.SLACK_CHANNEL_ML_ZOOMCAMP }}
+  SLACK_CHANNEL_STOCKS_ANALYTICS: ${{ vars.SLACK_CHANNEL_STOCKS_ANALYTICS }}
+
+jobs:
+  join-channels:
+    name: Join Slack Channels
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install slack-sdk
+      
+      - name: Join Slack Channels
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          echo "Starting bot channel join process..."
+          python data-ingestion/scripts/slack_bot_join_channels.py
+      
+      - name: Output Summary
+        if: always()
+        run: |
+          echo "## Slack Bot Channel Join Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configured Channels:" >> $GITHUB_STEP_SUMMARY
+          echo "- Data Engineering: \`${{ env.SLACK_CHANNEL_DATA_ENGINEERING || 'Not configured' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- LLM Zoomcamp: \`${{ env.SLACK_CHANNEL_LLM_ZOOMCAMP || 'Not configured' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- MLOps Zoomcamp: \`${{ env.SLACK_CHANNEL_MLOPS_ZOOMCAMP || 'Not configured' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- ML Zoomcamp: \`${{ env.SLACK_CHANNEL_ML_ZOOMCAMP || 'Not configured' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Stocks Analytics: \`${{ env.SLACK_CHANNEL_STOCKS_ANALYTICS || 'Not configured' }}\`" >> $GITHUB_STEP_SUMMARY

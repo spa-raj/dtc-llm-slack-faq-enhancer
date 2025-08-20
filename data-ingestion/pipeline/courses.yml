@@ -1,0 +1,28 @@
+# Course configuration for Slack API ingestion pipeline
+# Uses environment variable placeholders: ${VAR_NAME}
+# These are resolved at runtime from environment variables
+courses:
+  - id: course-data-engineering
+    channels: 
+      - "${SLACK_CHANNEL_DATA_ENGINEERING}"
+    raw_prefix: "s3://${BUCKET_DATA}/raw/slack/course-data-engineering"
+    
+  - id: course-llm-zoomcamp
+    channels:
+      - "${SLACK_CHANNEL_LLM_ZOOMCAMP}"
+    raw_prefix: "s3://${BUCKET_DATA}/raw/slack/course-llm-zoomcamp"
+    
+  - id: course-mlops-zoomcamp
+    channels:
+      - "${SLACK_CHANNEL_MLOPS_ZOOMCAMP}"
+    raw_prefix: "s3://${BUCKET_DATA}/raw/slack/course-mlops-zoomcamp"
+    
+  - id: course-ml-zoomcamp
+    channels:
+      - "${SLACK_CHANNEL_ML_ZOOMCAMP}"
+    raw_prefix: "s3://${BUCKET_DATA}/raw/slack/course-ml-zoomcamp"
+    
+  - id: course-stocks-analytics-zoomcamp
+    channels:
+      - "${SLACK_CHANNEL_STOCKS_ANALYTICS}"
+    raw_prefix: "s3://${BUCKET_DATA}/raw/slack/course-stocks-analytics-zoomcamp"
