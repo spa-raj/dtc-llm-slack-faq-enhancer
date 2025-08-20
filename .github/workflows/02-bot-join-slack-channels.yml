@@ -5,10 +5,12 @@ description: |
 
 on:
   workflow_dispatch:
-  
-  push:
-    branches:
-      - data-ingestion
+
+# uncomment when a new channel is added
+# run on push
+#  push:
+#    branches:
+#      - data-ingestion
 
 env:
   # Slack Channel IDs
