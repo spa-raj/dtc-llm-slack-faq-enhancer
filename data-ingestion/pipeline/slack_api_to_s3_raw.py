@@ -65,6 +65,9 @@ def _substitute_env_vars(text: str) -> str:
     """
     def replacer(match):
         var_name = match.group(1)
+        # Skip comment lines and documentation examples
+        if var_name == "VAR_NAME":
+            return match.group(0)  # Return the original placeholder
         value = os.environ.get(var_name)
         if value is None:
             raise ValueError(f"Environment variable {var_name} is not set")
@@ -436,10 +439,26 @@ def main():
 
     # env-first configuration
     bucket = args.bucket or _env("BUCKET_DATA")
-    courses_yaml = args.courses_yaml or _env("COURSES_YAML", "data-ingestion/pipeline/courses.yml")
-    window_hours = args.window_hours or int(_env("WINDOW_HOURS", "24"))
-    jitter_ms = int(_env("RATE_JITTER_MS", "0") or 0)
-    backoff_cap = float(_env("RATE_MAX_BACKOFF_S", "30"))
+    courses_yaml = args.courses_yaml or _env("COURSES_YAML")
+    window_hours = args.window_hours or int(_env("WINDOW_HOURS", "24") or "24")
+    jitter_ms = int(_env("RATE_JITTER_MS", "0") or "0")
+    backoff_cap = float(_env("RATE_MAX_BACKOFF_S", "30") or "30")
+
+    # Auto-detect courses.yml file if not specified
+    if not courses_yaml:
+        # Try different possible locations
+        possible_paths = [
+            "data-ingestion/pipeline/courses.yml",
+            "courses.yml",
+            "pipeline/courses.yml"
+        ]
+        for path in possible_paths:
+            if Path(path).exists():
+                courses_yaml = path
+                break
+        
+        if not courses_yaml:
+            raise RuntimeError(f"courses.yml not found. Tried: {', '.join(possible_paths)}")
 
     token = _env("SLACK_BOT_TOKEN")
     if not token:
@@ -447,8 +466,8 @@ def main():
 
     if not bucket:
         raise RuntimeError("BUCKET_DATA (or --bucket) is required")
-    if not courses_yaml or not Path(courses_yaml).exists():
-        raise RuntimeError(f"COURSES_YAML (or --courses-yaml) is missing or not found: {courses_yaml}")
+    if not Path(courses_yaml).exists():
+        raise RuntimeError(f"Courses YAML file not found: {courses_yaml}")
 
     print(f"Configuration:")
     print(f"  Bucket: {bucket}")
