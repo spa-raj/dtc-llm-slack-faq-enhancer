@@ -11,7 +11,7 @@ on:
 #      branches:
 #        - data-ingestion
   schedule:
-     - cron: "30 5 * * *"  # Daily at 11:00 AM IST (5:30 AM UTC)
+     - cron: "45 5 * * *"  # Daily at 11:15 AM IST (5:45 AM UTC)
 
 env:
   # AWS Configuration
