@@ -79,51 +79,32 @@ resource "aws_s3_bucket_lifecycle_configuration" "slack" {
       storage_class = "GLACIER"
     }
   }
-
-  rule {
-    id     = "bronze-transitions"
-    status = "Enabled"
-    filter {
-      prefix = "bronze/slack/"
-    }
-    transition {
-      days          = var.bronze_ia_days
-      storage_class = "STANDARD_IA"
-    }
-  }
-
-  rule {
-    id     = "silver-transitions"
-    status = "Enabled"
-    filter {
-      prefix = "silver/slack/"
-    }
-    transition {
-      days          = var.silver_ia_days
-      storage_class = "STANDARD_IA"
-    }
-  }
 }
 
 data "aws_iam_policy_document" "writer" {
   statement {
-    sid     = "ListBucket"
+    sid     = "ListRawSlackData"
     effect  = "Allow"
     actions = ["s3:ListBucket"]
     resources = [aws_s3_bucket.slack.arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["raw/slack/*"]
+    }
   }
 
   statement {
-    sid     = "RW"
+    sid     = "WriteRawSlackData"
     effect  = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = ["${aws_s3_bucket.slack.arn}/*"]
+    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
+    resources = ["${aws_s3_bucket.slack.arn}/raw/slack/*"]
   }
 }
 
 resource "aws_iam_policy" "writer" {
   count       = var.create_writer_policy ? 1 : 0
-  name        = "${var.bucket_name}-writer"
-  description = "RW policy for Slack data lake bucket"
+  name        = "${var.bucket_name}-raw-writer"
+  description = "Write policy for raw Slack data ingestion"
   policy      = data.aws_iam_policy_document.writer.json
 }

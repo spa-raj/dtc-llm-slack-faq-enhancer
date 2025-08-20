@@ -1,6 +1,6 @@
 terraform {
   # float within v1.x but require a reasonably new core
-  required_version = ">= 1.11.0, < 2.0.0"
+  required_version = ">= 1.0.0, < 2.0.0"
 
   required_providers {
     aws = {

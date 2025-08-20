@@ -27,15 +27,6 @@ variable "raw_glacier_days" {
   default = 180
 }
 
-variable "bronze_ia_days" {
-  type    = number
-  default = 30
-}
-
-variable "silver_ia_days" {
-  type    = number
-  default = 30
-}
 
 variable "enable_versioning" {
   type    = bool
@@ -54,7 +45,3 @@ variable "create_writer_policy" {
   default = true
 }
 
-variable "writer_principal_arn" {
-  type    = string
-  default = ""
-}
