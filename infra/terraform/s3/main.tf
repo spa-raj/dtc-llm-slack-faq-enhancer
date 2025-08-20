@@ -37,8 +37,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "slack" {
 
 data "aws_iam_policy_document" "deny_insecure_transport" {
   statement {
-    sid    = "DenyInsecureTransport"
-    effect = "Deny"
+    sid     = "DenyInsecureTransport"
+    effect  = "Deny"
     actions = ["s3:*"]
     principals {
       type        = "*"
@@ -107,16 +107,16 @@ resource "aws_s3_bucket_lifecycle_configuration" "slack" {
 
 data "aws_iam_policy_document" "writer" {
   statement {
-    sid     = "ListBucket"
-    effect  = "Allow"
-    actions = ["s3:ListBucket"]
+    sid       = "ListBucket"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
     resources = [aws_s3_bucket.slack.arn]
   }
 
   statement {
-    sid     = "RW"
-    effect  = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    sid       = "RW"
+    effect    = "Allow"
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
     resources = ["${aws_s3_bucket.slack.arn}/*"]
   }
 }
