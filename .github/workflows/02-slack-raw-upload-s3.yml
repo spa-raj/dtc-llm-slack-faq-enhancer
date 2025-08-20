@@ -1,17 +1,9 @@
-name: 03 - Slack Raw Data Upload to S3
-description: |
-  This workflow uploads raw Slack data to S3 using the Slack API.
-  It runs on a schedule or can be triggered manually.
+name: 02 - Slack Raw Data Upload to S3
 
 on:
   workflow_dispatch:
-
-  # run on push
-#  push:
-#      branches:
-#        - data-ingestion
-  schedule:
-     - cron: "45 5 * * *"  # Daily at 11:15 AM IST (5:45 AM UTC)
+  # schedule:
+  #   - cron: "30 5 * * *"  # Daily at 11:00 AM IST (5:30 AM UTC)
 
 env:
   # AWS Configuration
@@ -21,6 +13,7 @@ env:
   SLACK_S3_WRITER_ROLE_NAME: ${{ vars.SLACK_S3_WRITER_ROLE_NAME }}
   
   # Pipeline Configuration
+  COURSES_YAML: ${{ vars.COURSES_YAML }}
   WINDOW_HOURS: ${{ vars.WINDOW_HOURS }}
   S3_SSE: ${{ vars.S3_SSE }}
   S3_SSE_KMS_KEY_ID: ${{ vars.S3_SSE_KMS_KEY_ID }}
