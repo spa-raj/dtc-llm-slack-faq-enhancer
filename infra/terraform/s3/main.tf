@@ -127,3 +127,40 @@ resource "aws_iam_policy" "writer" {
   description = "RW policy for Slack data lake bucket"
   policy      = data.aws_iam_policy_document.writer.json
 }
+
+data "aws_iam_policy_document" "github_oidc_trust" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Federated"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"]
+    }
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repo}:environment:${var.github_environment}"]
+    }
+  }
+}
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_iam_role" "slack_s3_writer" {
+  count              = var.create_slack_writer_role ? 1 : 0
+  name               = var.slack_s3_writer_role_name
+  assume_role_policy = data.aws_iam_policy_document.github_oidc_trust.json
+  description        = "Role for GitHub Actions to upload Slack data to S3"
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "slack_s3_writer" {
+  count      = var.create_slack_writer_role && var.create_writer_policy ? 1 : 0
+  role       = aws_iam_role.slack_s3_writer[0].name
+  policy_arn = aws_iam_policy.writer[0].arn
+}

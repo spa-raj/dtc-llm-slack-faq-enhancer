@@ -77,6 +77,9 @@ jobs:
         run: |
           terraform plan -var="bucket_name=${{ env.BUCKET_DATA }}" \
                         -var="aws_region=${{ env.AWS_REGION }}" \
+                        -var="github_repo=${{ github.repository }}" \
+                        -var="github_environment=dev" \
+                        -var="slack_s3_writer_role_name=${{ vars.SLACK_S3_WRITER_ROLE_NAME }}" \
                         -out=tfplan
                         
       - name: Upload Terraform Plan
@@ -92,7 +95,10 @@ jobs:
         run: |
           terraform apply -auto-approve \
                          -var="bucket_name=${{ env.BUCKET_DATA }}" \
-                         -var="aws_region=${{ env.AWS_REGION }}"
+                         -var="aws_region=${{ env.AWS_REGION }}" \
+                         -var="github_repo=${{ github.repository }}" \
+                         -var="github_environment=dev" \
+                         -var="slack_s3_writer_role_name=${{ vars.SLACK_S3_WRITER_ROLE_NAME }}"
                          
       - name: Terraform Destroy
         if: github.event.inputs.action == 'destroy'
@@ -100,7 +106,10 @@ jobs:
         run: |
           terraform destroy -auto-approve \
                            -var="bucket_name=${{ env.BUCKET_DATA }}" \
-                           -var="aws_region=${{ env.AWS_REGION }}"
+                           -var="aws_region=${{ env.AWS_REGION }}" \
+                           -var="github_repo=${{ github.repository }}" \
+                           -var="github_environment=dev" \
+                           -var="slack_s3_writer_role_name=${{ vars.SLACK_S3_WRITER_ROLE_NAME }}"
                            
       - name: Output Summary
         if: always()
