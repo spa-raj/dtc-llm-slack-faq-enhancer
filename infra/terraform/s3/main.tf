@@ -151,17 +151,8 @@ data "aws_iam_policy_document" "github_oidc_trust" {
 
 data "aws_caller_identity" "current" {}
 
-data "aws_iam_role" "existing_slack_s3_writer" {
-  count = var.create_slack_writer_role ? 1 : 0
-  name  = var.slack_s3_writer_role_name
-}
-
-locals {
-  role_exists = var.create_slack_writer_role && length(data.aws_iam_role.existing_slack_s3_writer) > 0 && data.aws_iam_role.existing_slack_s3_writer[0].name != ""
-}
-
 resource "aws_iam_role" "slack_s3_writer" {
-  count              = var.create_slack_writer_role && !local.role_exists ? 1 : 0
+  count              = var.create_slack_writer_role ? 1 : 0
   name               = var.slack_s3_writer_role_name
   assume_role_policy = data.aws_iam_policy_document.github_oidc_trust.json
   description        = "Role for GitHub Actions to upload Slack data to S3"
@@ -169,9 +160,7 @@ resource "aws_iam_role" "slack_s3_writer" {
 }
 
 resource "aws_iam_role_policy_attachment" "slack_s3_writer" {
-  count = var.create_slack_writer_role && var.create_writer_policy ? 1 : 0
-  role = local.role_exists ? 
-    data.aws_iam_role.existing_slack_s3_writer[0].name : 
-    aws_iam_role.slack_s3_writer[0].name
+  count      = var.create_slack_writer_role && var.create_writer_policy ? 1 : 0
+  role       = aws_iam_role.slack_s3_writer[0].name
   policy_arn = aws_iam_policy.writer[0].arn
 }
