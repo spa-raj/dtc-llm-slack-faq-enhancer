@@ -11,19 +11,11 @@ output "writer_policy_arn" {
 }
 
 output "slack_s3_writer_role_arn" {
-  value = var.create_slack_writer_role ? (
-    local.role_exists ? 
-    data.aws_iam_role.existing_slack_s3_writer[0].arn : 
-    try(aws_iam_role.slack_s3_writer[0].arn, null)
-  ) : null
+  value       = try(aws_iam_role.slack_s3_writer[0].arn, null)
   description = "ARN of the IAM role for Slack S3 writer"
 }
 
 output "slack_s3_writer_role_name" {
-  value = var.create_slack_writer_role ? (
-    local.role_exists ? 
-    data.aws_iam_role.existing_slack_s3_writer[0].name : 
-    try(aws_iam_role.slack_s3_writer[0].name, null)
-  ) : null
+  value       = try(aws_iam_role.slack_s3_writer[0].name, null)
   description = "Name of the IAM role for Slack S3 writer"
 }
