@@ -1,0 +1,35 @@
+# Course FAQ configuration for Google Docs reader pipeline
+# Uses environment variable placeholders: ${VAR_NAME}
+# These are resolved at runtime from environment variables
+faq_courses:
+  - id: course-data-engineering
+    name: "Data Engineering Zoomcamp"
+    google_doc_id: "${FAQ_DOC_DATA_ENGINEERING}"
+    collection_suffix: "data_engineering"
+    
+  - id: course-llm-zoomcamp
+    name: "LLM Zoomcamp"
+    google_doc_id: "${FAQ_DOC_LLM_ZOOMCAMP}"
+    collection_suffix: "llm_zoomcamp"
+    
+  - id: course-mlops-zoomcamp
+    name: "MLOps Zoomcamp"
+    google_doc_id: "${FAQ_DOC_MLOPS_ZOOMCAMP}"
+    collection_suffix: "mlops_zoomcamp"
+    
+  - id: course-ml-zoomcamp
+    name: "Machine Learning Zoomcamp"
+    google_doc_id: "${FAQ_DOC_ML_ZOOMCAMP}"
+    collection_suffix: "ml_zoomcamp"
+    
+  - id: course-stocks-analytics-zoomcamp
+    name: "Stocks Analytics Zoomcamp"
+    google_doc_id: "${FAQ_DOC_STOCKS_ANALYTICS}"
+    collection_suffix: "stocks_analytics"
+
+# Global settings
+settings:
+  embed_model: "${EMBED_MODEL:-multi-qa-mpnet-base-dot-v1}"
+  qdrant_base_collection: "${QDRANT_BASE_COLLECTION:-dtc_faq}"
+  qdrant_url: "${QDRANT_URL}"
+  qdrant_api_key: "${QDRANT_API_KEY}"
