@@ -17,18 +17,20 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set up Python environment
 WORKDIR /models
 
-# Install dependencies with specific versions and optimizations
+# Install dependencies with Python 3.12 compatible versions
+# Install PyTorch first from CPU index, then other packages from PyPI
 RUN uv pip install --system --no-cache-dir \
-    sentence-transformers==3.0.1 \
-    fastembed==0.7.3 \
-    torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
+    torch --extra-index-url https://download.pytorch.org/whl/cpu && \
+    uv pip install --system --no-cache-dir \
+    sentence-transformers \
+    fastembed
 
 # Pre-download models with error handling and timeout
 RUN echo "Downloading dense embedding model..." && \
     timeout 300 python -c "from sentence_transformers import SentenceTransformer; print('Loading model...', flush=True); SentenceTransformer('multi-qa-mpnet-base-dot-v1'); print('Dense model cached!', flush=True)"
 
 RUN echo "Downloading sparse embedding model..." && \
-    timeout 300 python -c "from fastembed import SparseTextEmbedding; print('Loading SPLADE...', flush=True); SparseTextEmbedding('prithvida/Splade_PP_en_v1'); print('Sparse model cached!', flush=True)"
+    timeout 300 python -c "from fastembed import SparseTextEmbedding; print('Loading SPLADE...', flush=True); SparseTextEmbedding('prithivida/Splade_PP_en_v1'); print('Sparse model cached!', flush=True)"
 
 # Stage 2: Runtime stage
 FROM python:3.12-slim AS runtime

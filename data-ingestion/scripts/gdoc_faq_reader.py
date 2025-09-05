@@ -70,7 +70,7 @@ def read_gdoc_faq(document_id: str) -> List[Dict]:
 
     return chunks
 
-def index_to_qdrant(chunks: List[Dict], qdrant_url: str, qdrant_api_key: str, collection_name: str, embed_model: str = "multi-qa-mpnet-base-dot-v1", sparse_model: str = "prithvida/Splade_PP_en_v1"):
+def index_to_qdrant(chunks: List[Dict], qdrant_url: str, qdrant_api_key: str, collection_name: str, embed_model: str = "multi-qa-mpnet-base-dot-v1", sparse_model: str = "prithivida/Splade_PP_en_v1"):
     # Initialize Qdrant client
     client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
     
@@ -200,7 +200,7 @@ def process_single_course(course_config: Dict, settings: Dict) -> int:
             base_collection = settings.get("qdrant_base_collection", "dtc_faq")
             collection_name = f"{base_collection}_{collection_suffix}"
             embed_model = settings.get("embed_model", "multi-qa-mpnet-base-dot-v1")
-            sparse_model = settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithvida/Splade_PP_en_v1")
+            sparse_model = settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithivida/Splade_PP_en_v1")
             
             index_to_qdrant(chunks, qdrant_url, qdrant_api_key, collection_name, embed_model, sparse_model)
         else:
