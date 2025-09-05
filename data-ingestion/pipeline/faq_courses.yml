@@ -22,10 +22,10 @@ faq_courses:
     google_doc_id: "${FAQ_DOC_ML_ZOOMCAMP}"
     collection_suffix: "ml_zoomcamp"
     
-  - id: course-stocks-analytics-zoomcamp
-    name: "Stocks Analytics Zoomcamp"
-    google_doc_id: "${FAQ_DOC_STOCKS_ANALYTICS}"
-    collection_suffix: "stocks_analytics"
+  # - id: course-stocks-analytics-zoomcamp
+  #   name: "Stocks Analytics Zoomcamp"
+  #   google_doc_id: "${FAQ_DOC_STOCKS_ANALYTICS}"
+  #   collection_suffix: "stocks_analytics"
 
 # Global settings
 settings:

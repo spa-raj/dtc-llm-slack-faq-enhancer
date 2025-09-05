@@ -22,7 +22,7 @@ env:
   FAQ_DOC_LLM_ZOOMCAMP: ${{ secrets.FAQ_DOC_LLM_ZOOMCAMP }}
   FAQ_DOC_MLOPS_ZOOMCAMP: ${{ secrets.FAQ_DOC_MLOPS_ZOOMCAMP }}
   FAQ_DOC_ML_ZOOMCAMP: ${{ secrets.FAQ_DOC_ML_ZOOMCAMP }}
-  FAQ_DOC_STOCKS_ANALYTICS: ${{ secrets.FAQ_DOC_STOCKS_ANALYTICS }}
+  # FAQ_DOC_STOCKS_ANALYTICS: ${{ secrets.FAQ_DOC_STOCKS_ANALYTICS }}
   
   # Qdrant Configuration
   QDRANT_URL: ${{ secrets.QDRANT_URL }}
@@ -93,7 +93,7 @@ jobs:
               -e FAQ_DOC_LLM_ZOOMCAMP \
               -e FAQ_DOC_MLOPS_ZOOMCAMP \
               -e FAQ_DOC_ML_ZOOMCAMP \
-              -e FAQ_DOC_STOCKS_ANALYTICS \
+              # -e FAQ_DOC_STOCKS_ANALYTICS \
               -e QDRANT_URL \
               -e QDRANT_API_KEY \
               -e QDRANT_BASE_COLLECTION \
@@ -112,7 +112,7 @@ jobs:
               -e FAQ_DOC_LLM_ZOOMCAMP \
               -e FAQ_DOC_MLOPS_ZOOMCAMP \
               -e FAQ_DOC_ML_ZOOMCAMP \
-              -e FAQ_DOC_STOCKS_ANALYTICS \
+              # -e FAQ_DOC_STOCKS_ANALYTICS \
               -e QDRANT_URL \
               -e QDRANT_API_KEY \
               -e QDRANT_BASE_COLLECTION \
