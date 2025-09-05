@@ -17,13 +17,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set up Python environment
 WORKDIR /models
 
-# Install dependencies with Python 3.12 compatible versions
-# Install PyTorch first from CPU index, then other packages from PyPI
-RUN uv pip install --system --no-cache-dir \
-    torch --extra-index-url https://download.pytorch.org/whl/cpu && \
+# Install dependencies using the gdoc-faq dependency group
+COPY pyproject.toml uv.lock ./
+ENV UV_PROJECT_ENVIRONMENT=/usr/local
+RUN uv sync --frozen --no-install-project --group gdoc-faq && \
     uv pip install --system --no-cache-dir \
-    sentence-transformers \
-    fastembed
+    torch --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Pre-download models with error handling and timeout
 RUN echo "Downloading dense embedding model..." && \
