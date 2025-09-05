@@ -1,5 +1,5 @@
-# Dockerfile for DTC FAQ Reader - Hybrid Execution
-# Pre-caches ML models for faster runtime, expects dependencies installed by workflow
+# Dockerfile for DTC FAQ Reader - Hybrid Search
+# Pre-caches both dense and sparse ML models for faster runtime
 
 FROM python:3.12-slim as base
 
@@ -14,11 +14,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set working directory
 WORKDIR /app
 
-# Install sentence-transformers for model pre-caching
-RUN uv pip install sentence-transformers==3.0.1 --system
+# Install ML dependencies for model pre-caching
+RUN uv pip install sentence-transformers==3.0.1 fastembed==0.7.3 --system
 
-# Pre-download the embedding model to speed up runtime
+# Pre-download dense embedding model
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('multi-qa-mpnet-base-dot-v1')"
+
+# Pre-download sparse embedding model (SPLADE)
+RUN python -c "from fastembed import SparseTextEmbedding; SparseTextEmbedding('prithvida/Splade_PP_en_v1')"
 
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser

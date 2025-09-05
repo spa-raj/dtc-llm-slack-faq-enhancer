@@ -1,8 +1,9 @@
-name: 04 - Read Live FAQs to Qdrant
+name: 04 - Read Live FAQs to Qdrant (Hybrid Search)
 description: |
   This workflow reads live Google Doc FAQs for all configured courses,
-  extracts Q&A pairs, embeds them using multi-qa-mpnet-base-dot-v1,
-  and indexes directly into separate Qdrant collections per course.
+  extracts Q&A pairs, embeds them using both dense (SentenceTransformer) 
+  and sparse (SPLADE) embeddings for hybrid search, and indexes directly 
+  into separate Qdrant collections per course.
 
 on:
   workflow_dispatch:
@@ -27,7 +28,10 @@ env:
   QDRANT_URL: ${{ secrets.QDRANT_URL }}
   QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
   QDRANT_BASE_COLLECTION: ${{ vars.QDRANT_BASE_COLLECTION || 'dtc_faq' }}
+  
+  # Embedding Models (Hybrid Search)
   EMBED_MODEL: ${{ vars.EMBED_MODEL || 'multi-qa-mpnet-base-dot-v1' }}
+  SPARSE_MODEL: ${{ vars.SPARSE_MODEL || 'prithvida/Splade_PP_en_v1' }}
 
 permissions:
   id-token: write
@@ -71,10 +75,11 @@ jobs:
 
       - name: Index All Course FAQs to Qdrant
         run: |
-          echo "Starting FAQ indexing for all courses..."
+          echo "Starting hybrid FAQ indexing for all courses..."
           echo "FAQ Config: $FAQ_COURSES_YAML"
           echo "Base Collection: $QDRANT_BASE_COLLECTION"
-          echo "Embedding model: $EMBED_MODEL"
+          echo "Dense Embedding Model: $EMBED_MODEL"
+          echo "Sparse Embedding Model: $SPARSE_MODEL"
           
           # Mount Google Cloud credentials and project files into container
           if [ -n "${{ github.event.inputs.course_id }}" ]; then
@@ -93,6 +98,7 @@ jobs:
               -e QDRANT_API_KEY \
               -e QDRANT_BASE_COLLECTION \
               -e EMBED_MODEL \
+              -e SPARSE_MODEL \
               --workdir /workspace \
               dtc-faq-reader:latest --course-id "${{ github.event.inputs.course_id }}"
           else
@@ -111,6 +117,7 @@ jobs:
               -e QDRANT_API_KEY \
               -e QDRANT_BASE_COLLECTION \
               -e EMBED_MODEL \
+              -e SPARSE_MODEL \
               --workdir /workspace \
               dtc-faq-reader:latest
           fi
@@ -118,10 +125,11 @@ jobs:
       - name: Output Summary
         if: always()
         run: |
-          echo "## FAQ Indexing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Hybrid FAQ Indexing Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Config File**: $FAQ_COURSES_YAML" >> $GITHUB_STEP_SUMMARY
           echo "- **Base Collection**: $QDRANT_BASE_COLLECTION" >> $GITHUB_STEP_SUMMARY
-          echo "- **Embedding Model**: $EMBED_MODEL" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dense Model**: $EMBED_MODEL" >> $GITHUB_STEP_SUMMARY
+          echo "- **Sparse Model**: $SPARSE_MODEL" >> $GITHUB_STEP_SUMMARY
           if [ -n "${{ github.event.inputs.course_id }}" ]; then
             echo "- **Processed Course**: ${{ github.event.inputs.course_id }}" >> $GITHUB_STEP_SUMMARY
           else

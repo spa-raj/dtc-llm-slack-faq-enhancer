@@ -25,5 +25,6 @@ gdoc-faq = [
     "google-auth-oauthlib>=1.2.1",
     "qdrant-client>=1.11.0",
     "sentence-transformers>=3.0.0",
+    "fastembed>=0.3.0",
 ]
 
