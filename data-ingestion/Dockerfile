@@ -1,12 +1,43 @@
 # Dockerfile for DTC FAQ Reader - Hybrid Search
-# Pre-caches both dense and sparse ML models for faster runtime
+# Optimized multi-stage build with model pre-caching
 
-FROM python:3.12-slim AS base
+# Stage 1: Model download stage (runs as root for permissions)
+FROM python:3.12-slim AS model-downloader
 
-# Install system dependencies
+# Install system dependencies in one layer
 RUN apt-get update && apt-get install -y \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    git \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Set up Python environment
+WORKDIR /models
+
+# Install dependencies with specific versions and optimizations
+RUN uv pip install --system --no-cache-dir \
+    sentence-transformers==3.0.1 \
+    fastembed==0.7.3 \
+    torch==2.1.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
+
+# Pre-download models with error handling and timeout
+RUN echo "Downloading dense embedding model..." && \
+    timeout 300 python -c "from sentence_transformers import SentenceTransformer; print('Loading model...', flush=True); SentenceTransformer('multi-qa-mpnet-base-dot-v1'); print('Dense model cached!', flush=True)"
+
+RUN echo "Downloading sparse embedding model..." && \
+    timeout 300 python -c "from fastembed import SparseTextEmbedding; print('Loading SPLADE...', flush=True); SparseTextEmbedding('prithvida/Splade_PP_en_v1'); print('Sparse model cached!', flush=True)"
+
+# Stage 2: Runtime stage
+FROM python:3.12-slim AS runtime
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -14,19 +45,21 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set working directory
 WORKDIR /app
 
-# Install ML dependencies for model pre-caching
-RUN uv pip install sentence-transformers==3.0.1 fastembed==0.7.3 --system
+# Copy Python packages and models from builder stage
+COPY --from=model-downloader /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=model-downloader /root/.cache /root/.cache
 
-# Pre-download dense embedding model
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('multi-qa-mpnet-base-dot-v1')"
+# Create non-root user and set permissions
+RUN groupadd -r appuser && useradd -r -g appuser -m appuser \
+    && chown -R appuser:appuser /app \
+    && chown -R appuser:appuser /root/.cache
 
-# Pre-download sparse embedding model (SPLADE)
-RUN python -c "from fastembed import SparseTextEmbedding; SparseTextEmbedding('prithvida/Splade_PP_en_v1')"
-
-# Create non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-RUN chown -R appuser:appuser /app
+# Switch to non-root user
 USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sentence_transformers, fastembed; print('OK')" || exit 1
 
 # Set entrypoint
 ENTRYPOINT ["python", "data-ingestion/scripts/gdoc_faq_reader.py"]
