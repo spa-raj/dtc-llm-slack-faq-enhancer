@@ -8,6 +8,7 @@ from google.oauth2 import service_account
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
+from fastembed import SparseTextEmbedding
 import yaml
 
 SCOPES = [
@@ -69,12 +70,13 @@ def read_gdoc_faq(document_id: str) -> List[Dict]:
 
     return chunks
 
-def index_to_qdrant(chunks: List[Dict], qdrant_url: str, qdrant_api_key: str, collection_name: str, embed_model: str = "multi-qa-mpnet-base-dot-v1"):
+def index_to_qdrant(chunks: List[Dict], qdrant_url: str, qdrant_api_key: str, collection_name: str, embed_model: str = "multi-qa-mpnet-base-dot-v1", sparse_model: str = "prithvida/Splade_PP_en_v1"):
     # Initialize Qdrant client
     client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
     
-    # Initialize embedding model
-    model = SentenceTransformer(embed_model)
+    # Initialize embedding models
+    dense_model = SentenceTransformer(embed_model)
+    sparse_embedding_model = SparseTextEmbedding(model_name=sparse_model)
     
     # Create collection if it doesn't exist
     try:
@@ -82,30 +84,56 @@ def index_to_qdrant(chunks: List[Dict], qdrant_url: str, qdrant_api_key: str, co
     except Exception:
         client.create_collection(
             collection_name=collection_name,
-            vectors_config=models.VectorParams(
-                size=model.get_sentence_embedding_dimension(),
-                distance=models.Distance.DOT
-            )
+            vectors_config={
+                "dense": models.VectorParams(
+                    size=dense_model.get_sentence_embedding_dimension(),
+                    distance=models.Distance.COSINE
+                )
+            },
+            sparse_vectors_config={
+                "sparse": models.SparseVectorParams(
+                    index=models.SparseIndexParams(
+                        on_disk=False,  # Keep in memory for better performance
+                    )
+                )
+            }
         )
+    
+    # Prepare texts for batch embedding
+    texts_to_embed = []
+    for chunk in chunks:
+        text_to_embed = f"{chunk['question']}\n{chunk['answer']}"
+        texts_to_embed.append(text_to_embed)
+    
+    # Generate embeddings in batch
+    print(f"Generating dense embeddings for {len(texts_to_embed)} texts...")
+    dense_embeddings = dense_model.encode(texts_to_embed).tolist()
+    
+    print(f"Generating sparse embeddings for {len(texts_to_embed)} texts...")
+    sparse_embeddings = list(sparse_embedding_model.embed(texts_to_embed))
     
     # Prepare points for indexing
     points = []
     for i, chunk in enumerate(chunks):
-        # Create text for embedding (question + answer)
-        text_to_embed = f"{chunk['question']}\n{chunk['answer']}"
-        
-        # Generate embedding
-        embedding = model.encode(text_to_embed).tolist()
+        text_to_embed = texts_to_embed[i]
+        dense_embedding = dense_embeddings[i]
+        sparse_embedding = sparse_embeddings[i]
         
         # Create stable ID based on content hash and course
         content_hash = hashlib.sha256(text_to_embed.encode()).hexdigest()
         course_id = chunk.get("course_id", "unknown")
         point_id = f"{course_id}_{content_hash[:8]}"
         
-        # Create point
+        # Create hybrid point with both dense and sparse vectors
         point = models.PointStruct(
             id=point_id,
-            vector=embedding,
+            vector={
+                "dense": dense_embedding,
+                "sparse": models.SparseVector(
+                    indices=sparse_embedding.indices.tolist(),
+                    values=sparse_embedding.values.tolist()
+                )
+            },
             payload={
                 "section": chunk["section"],
                 "question": chunk["question"], 
@@ -171,8 +199,9 @@ def process_single_course(course_config: Dict, settings: Dict) -> int:
             base_collection = settings.get("qdrant_base_collection", "dtc_faq")
             collection_name = f"{base_collection}_{collection_suffix}"
             embed_model = settings.get("embed_model", "multi-qa-mpnet-base-dot-v1")
+            sparse_model = settings.get("sparse_model", "prithvida/Splade_PP_en_v1")
             
-            index_to_qdrant(chunks, qdrant_url, qdrant_api_key, collection_name, embed_model)
+            index_to_qdrant(chunks, qdrant_url, qdrant_api_key, collection_name, embed_model, sparse_model)
         else:
             # Fallback to JSONL output
             out_dir = os.getenv("OUTPUT_DIR", "artifacts")
