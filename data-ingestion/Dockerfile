@@ -1,7 +1,7 @@
 # Dockerfile for DTC FAQ Reader - Hybrid Search
 # Pre-caches both dense and sparse ML models for faster runtime
 
-FROM python:3.12-slim as base
+FROM python:3.12-slim AS base
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
