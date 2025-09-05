@@ -65,6 +65,9 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
 
       - name: Auth to Google via OIDC
         uses: google-github-actions/auth@v2
