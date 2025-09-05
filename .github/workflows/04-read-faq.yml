@@ -96,7 +96,6 @@ jobs:
               -e FAQ_DOC_LLM_ZOOMCAMP \
               -e FAQ_DOC_MLOPS_ZOOMCAMP \
               -e FAQ_DOC_ML_ZOOMCAMP \
-              # -e FAQ_DOC_STOCKS_ANALYTICS \
               -e QDRANT_URL \
               -e QDRANT_API_KEY \
               -e QDRANT_BASE_COLLECTION \
@@ -115,7 +114,6 @@ jobs:
               -e FAQ_DOC_LLM_ZOOMCAMP \
               -e FAQ_DOC_MLOPS_ZOOMCAMP \
               -e FAQ_DOC_ML_ZOOMCAMP \
-              # -e FAQ_DOC_STOCKS_ANALYTICS \
               -e QDRANT_URL \
               -e QDRANT_API_KEY \
               -e QDRANT_BASE_COLLECTION \
