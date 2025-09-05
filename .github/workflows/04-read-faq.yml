@@ -47,6 +47,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free Disk Space
+        run: |
+          echo "Before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af
+          echo "After cleanup:"
+          df -h
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
 
@@ -68,6 +80,12 @@ jobs:
           platforms: linux/amd64
           provenance: false
           sbom: false
+
+      - name: Check disk usage after build
+        run: df -h
+
+      - name: Clean Docker build cache
+        run: docker builder prune -f
 
       - name: Auth to Google via OIDC
         uses: google-github-actions/auth@v2

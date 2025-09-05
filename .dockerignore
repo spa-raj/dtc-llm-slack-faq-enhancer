@@ -26,6 +26,28 @@ infra/
 *.log
 errors.txt
 artifacts/
+tmp/
+temp/
+*.tmp
+
+# Exclude test files to reduce context
+tests/
+*_test.py
+test_*.py
+
+# Exclude large model files (downloaded during build)
+*.bin
+*.safetensors
+*.onnx
+*.pkl
+models/
+
+# Exclude virtual environments and caches
+venv/
+env/
+ENV/
+.coverage*
+htmlcov/
 
 # Only include what's needed for FAQ reader:
 # - pyproject.toml
