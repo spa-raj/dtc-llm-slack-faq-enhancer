@@ -22,6 +22,9 @@ ENV TRANSFORMERS_CACHE=/tmp/transformers
 ENV SENTENCE_TRANSFORMERS_HOME=/tmp/sentence_transformers
 ENV HF_HOME=/tmp/huggingface
 
+# Create cache directories
+RUN mkdir -p /tmp/transformers /tmp/sentence_transformers /tmp/huggingface
+
 # Install dependencies using the gdoc-faq dependency group
 COPY pyproject.toml uv.lock ./
 ENV UV_PROJECT_ENVIRONMENT=/usr/local
