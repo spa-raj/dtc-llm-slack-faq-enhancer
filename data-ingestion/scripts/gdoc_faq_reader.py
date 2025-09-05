@@ -200,7 +200,7 @@ def process_single_course(course_config: Dict, settings: Dict) -> int:
             base_collection = settings.get("qdrant_base_collection", "dtc_faq")
             collection_name = f"{base_collection}_{collection_suffix}"
             embed_model = settings.get("embed_model", "multi-qa-mpnet-base-dot-v1")
-            sparse_model = settings.get("sparse_model", "prithvida/Splade_PP_en_v1")
+            sparse_model = settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithvida/Splade_PP_en_v1")
             
             index_to_qdrant(chunks, qdrant_url, qdrant_api_key, collection_name, embed_model, sparse_model)
         else:

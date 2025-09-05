@@ -43,7 +43,7 @@ def run_example_searches():
             qdrant_url=settings["qdrant_url"],
             qdrant_api_key=settings.get("qdrant_api_key", ""),
             dense_model=settings.get("embed_model", "multi-qa-mpnet-base-dot-v1"),
-            sparse_model=settings.get("sparse_model", "prithvida/Splade_PP_en_v1")
+            sparse_model=settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithvida/Splade_PP_en_v1")
         )
         
         # Get collection name (use first course as example)
@@ -51,7 +51,10 @@ def run_example_searches():
         
         # Try to find available collections
         import yaml
-        config = yaml.safe_load(Path(faq_courses_yaml).read_text(encoding="utf-8"))
+        from hybrid_search import _substitute_env_vars
+        yaml_content = Path(faq_courses_yaml).read_text(encoding="utf-8")
+        yaml_content = _substitute_env_vars(yaml_content)
+        config = yaml.safe_load(yaml_content)
         courses = config.get("faq_courses", [])
         
         if not courses:
