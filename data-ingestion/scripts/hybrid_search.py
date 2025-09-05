@@ -268,7 +268,9 @@ def main():
     if not collection_name:
         base_collection = settings.get("qdrant_base_collection", "dtc_faq")
         # Use first available collection suffix as default
-        config = yaml.safe_load(Path(faq_courses_yaml).read_text(encoding="utf-8"))
+        yaml_content = Path(faq_courses_yaml).read_text(encoding="utf-8")
+        yaml_content = _substitute_env_vars(yaml_content)
+        config = yaml.safe_load(yaml_content)
         courses = config.get("faq_courses", [])
         if courses:
             collection_name = f"{base_collection}_{courses[0]['collection_suffix']}"

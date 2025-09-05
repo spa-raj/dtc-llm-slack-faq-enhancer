@@ -139,8 +139,9 @@ def index_to_qdrant(chunks: List[Dict], qdrant_url: str, qdrant_api_key: str, co
                 "question": chunk["question"], 
                 "answer": chunk["answer"],
                 "text": text_to_embed,
-                "doc_id": os.environ.get("GOOGLE_DOC_ID", ""),
-                "course": os.environ.get("COURSE_NAME", "")
+                "doc_id": chunk["doc_id"],
+                "course": chunk["course_name"],
+                "course_id": chunk["course_id"]
             }
         )
         points.append(point)
