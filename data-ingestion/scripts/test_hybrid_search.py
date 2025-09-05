@@ -43,7 +43,7 @@ def run_example_searches():
             qdrant_url=settings["qdrant_url"],
             qdrant_api_key=settings.get("qdrant_api_key", ""),
             dense_model=settings.get("embed_model", "multi-qa-mpnet-base-dot-v1"),
-            sparse_model=settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithvida/Splade_PP_en_v1")
+            sparse_model=settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithivida/Splade_PP_en_v1")
         )
         
         # Get collection name (use first course as example)

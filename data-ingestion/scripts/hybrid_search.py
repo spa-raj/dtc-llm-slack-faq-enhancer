@@ -23,7 +23,7 @@ class HybridSearcher:
         qdrant_url: str, 
         qdrant_api_key: str, 
         dense_model: str = "multi-qa-mpnet-base-dot-v1",
-        sparse_model: str = "prithvida/Splade_PP_en_v1"
+        sparse_model: str = "prithivida/Splade_PP_en_v1"
     ):
         """
         Initialize the hybrid searcher.
@@ -254,7 +254,7 @@ def main():
         
     qdrant_api_key = settings.get("qdrant_api_key", "")
     dense_model = settings.get("embed_model", "multi-qa-mpnet-base-dot-v1") 
-    sparse_model = settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithvida/Splade_PP_en_v1")
+    sparse_model = settings.get("sparse_model") or settings.get("SPARSE_MODEL", "prithivida/Splade_PP_en_v1")
     
     searcher = HybridSearcher(
         qdrant_url=qdrant_url,

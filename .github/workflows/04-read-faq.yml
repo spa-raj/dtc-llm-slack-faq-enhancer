@@ -31,7 +31,7 @@ env:
   
   # Embedding Models (Hybrid Search)
   EMBED_MODEL: ${{ vars.EMBED_MODEL || 'multi-qa-mpnet-base-dot-v1' }}
-  SPARSE_MODEL: ${{ vars.SPARSE_MODEL || 'prithvida/Splade_PP_en_v1' }}
+  SPARSE_MODEL: ${{ vars.SPARSE_MODEL || 'prithivida/Splade_PP_en_v1' }}
 
 permissions:
   id-token: write
