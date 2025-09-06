@@ -10,8 +10,8 @@ on:
 #  push:
 #      branches:
 #        - data-ingestion
-  schedule:
-     - cron: "00 6 * * *"  # Daily at 11:30 AM IST (6:00 AM UTC)
+#  schedule:
+#     - cron: "00 6 * * *"  # Daily at 11:30 AM IST (6:00 AM UTC)
 
 env:
   # AWS Configuration
